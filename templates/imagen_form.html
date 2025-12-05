@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block contenido %}
+
+<h3>Cargar imágenes de la reparación</h3>
+
+<p>
+    Reparación N° <strong>{{ reparacion[0] }}</strong><br>
+    Fecha: <strong>{{ reparacion[2] }}</strong><br>
+    Descripción: <strong>{{ reparacion[3] }}</strong>
+</p>
+
+<form method="POST" enctype="multipart/form-data" class="mt-3">
+
+    <div class="mb-3">
+        <label for="imagenes" class="form-label">Imágenes</label>
+        <input
+            type="file"
+            class="form-control"
+            id="imagenes"
+            name="imagenes"
+            accept="image/*"
+            multiple
+            required
+        >
+        <div class="form-text">
+            Podés seleccionar varias imágenes manteniendo presionada la tecla CTRL (o SHIFT) al hacer clic.
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label for="descripcion" class="form-label">Descripción (opcional)</label>
+        <textarea
+            class="form-control"
+            id="descripcion"
+            name="descripcion"
+            rows="2"
+            placeholder="Ej: Fotos de daños en paragolpes, lateral derecho, etc."
+        ></textarea>
+        <div class="form-text">
+            Esta descripción se aplicará a todas las imágenes de esta carga.
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Subir imágenes</button>
+    <a href="{{ url_for('reparacion_detalle', reparacion_id=reparacion[0]) }}" class="btn btn-secondary">
+        Cancelar
+    </a>
+</form>
+
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block contenido %}
+
+<h3>
+    {% if reparacion %}
+        Editar reparación
+    {% else %}
+        Nueva reparación
+    {% endif %}
+</h3>
+
+<p>
+    Cliente: <strong>{{ cliente[1] }} {{ cliente[2] }}</strong><br>
+    Vehículo: <strong>{{ vehiculo[2] }} - {{ vehiculo[3] }} {{ vehiculo[4] }}</strong>
+</p>
+
+{% set estado_actual = reparacion and reparacion[5] or 'Ingresado' %}
+
+<form method="POST">
+    <input class="form-control mb-2" name="fecha" placeholder="Fecha (ej: 2025-11-22)"
+           value="{{ reparacion and reparacion[2] or '' }}">
+    <textarea class="form-control mb-2" name="descripcion" placeholder="Descripción del trabajo">{{ reparacion and reparacion[3] or '' }}</textarea>
+    <textarea class="form-control mb-2" name="notas" placeholder="Notas internas">{{ reparacion and reparacion[4] or '' }}</textarea>
+
+    <label class="form-label mt-2">Estado</label>
+    <select name="estado" class="form-select mb-3">
+        {% for e in ['Ingresado', 'En proceso', 'Esperando repuesto', 'Terminado', 'Entregado'] %}
+        <option value="{{ e }}" {% if estado_actual == e %}selected{% endif %}>{{ e }}</option>
+        {% endfor %}
+    </select>
+
+    <button class="btn btn-primary">Guardar</button>
+    <a href="/vehiculos/{{ vehiculo[0] }}/reparaciones" class="btn btn-secondary">Cancelar</a>
+</form>
+
+{% endblock %}

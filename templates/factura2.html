@@ -1,0 +1,341 @@
+{% extends "base.html" %}
+{% block contenido %}
+
+<style>
+
+    /* ==============================
+       MARCA DE AGUA
+    =============================== */
+
+    .presupuesto-wrapper {
+        background: #f4f4f4;
+        padding: 15px 0;
+    }
+
+    .presupuesto-sheet {
+        position: relative; /* clave para la marca de agua */
+        z-index: 10;
+        background: #ffffff;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 24px 28px;
+        border-radius: 10px;
+        box-shadow: 0 0 8px rgba(0,0,0,0.08);
+        border-top: 6px solid #c1121f;
+    }
+
+    .marca-agua {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    height: 420px;      /* CONTROLÁS QUE QUEPA */
+    width: auto;
+    opacity: 0.10;
+    pointer-events: none;
+    z-index: 0;
+}
+
+
+
+
+    /* todo el contenido encima de la marca de agua */
+    .presupuesto-sheet > *:not(.marca-agua) {
+        position: relative;
+        z-index: 1;
+    }
+
+    /* ==============================
+       ENCABEZADO
+    =============================== */
+
+    .presupuesto-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 2px solid #eee;
+        padding-bottom: 12px;
+        margin-bottom: 18px;
+    }
+
+    .presupuesto-header-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .presupuesto-logo {
+        max-height: 70px;
+    }
+
+    .presupuesto-titulo {
+        font-size: 1.4rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .presupuesto-subtitulo {
+        font-size: 0.9rem;
+        color: #c1121f;
+        text-transform: uppercase;
+        font-weight: 600;
+    }
+
+    .presupuesto-header-right {
+        text-align: right;
+    }
+
+    .presupuesto-etiqueta {
+        font-size: 0.75rem;
+        color: #777;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+
+    .presupuesto-numero {
+        font-size: 1.1rem;
+        font-weight: 700;
+    }
+
+    /* ==============================
+       BLOQUES DE INFORMACIÓN
+    =============================== */
+
+    .presupuesto-seccion {
+        background: #fafafa;
+        border-left: 3px solid #c1121f;
+        padding: 10px 12px;
+        border-radius: 6px;
+        margin-bottom: 10px;
+    }
+
+    .presupuesto-seccion-titulo {
+        font-weight: 800;
+        text-transform: uppercase;
+        margin-bottom: 6px;
+        font-size: 0.9rem;
+    }
+
+    /* ==============================
+       TABLA ÍTEMS
+    =============================== */
+    .presupuesto-tabla {
+        margin-top: 12px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        overflow: hidden;
+    }
+
+    .presupuesto-tabla thead {
+        background: #111;
+        color: white;
+    }
+
+    /* ==============================
+       RESUMEN FINAL
+    =============================== */
+    .presupuesto-resumen {
+        margin-top: 14px;
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    .presupuesto-resumen-inner {
+        width: 260px;
+        background: #fff;
+        padding: 10px;
+        border-radius: 6px;
+        border: 1px solid #ddd;
+    }
+
+    .presupuesto-resumen-total {
+        font-size: 1rem;
+        font-weight: bold;
+        border-top: 2px solid #c1121f;
+        padding-top: 8px;
+    }
+
+    /* ==============================
+       IMPRESIÓN
+    =============================== */
+    @media print {
+        .navbar, .no-print {
+            display: none !important;
+        }
+
+        body {
+            background: #ffffff !important;
+        }
+
+        .presupuesto-wrapper {
+            padding: 0;
+        }
+
+        .marca-agua {
+            opacity: 0.12 !important;  /* un poco más fuerte al imprimir */
+        }
+    }
+
+</style>
+
+<!-- CONTENIDO PRINCIPAL -->
+<div class="presupuesto-wrapper">
+    <div class="presupuesto-sheet">
+
+        <!-- MARCA DE AGUA DENTRO DE LA HOJA -->
+        <img src="{{ url_for('static', filename='img/doccar_logo_watermark.png') }}"
+            class="marca-agua" alt="Doccar watermark">
+
+
+        <!-- Botones (no imprimibles) -->
+        <div class="presupuesto-botones no-print mb-3">
+            <button onclick="window.print()" class="btn btn-dark btn-sm">🖨 Imprimir</button>
+
+            {% if wa_phone %}
+                {% set msg =
+                    'Hola ' ~ cliente[1] ~ ', te envío el presupuesto N° ' ~ factura_id ~ '.' ~
+                    '\\nPodés verlo acá: ' ~ pdf_url_publica ~
+                    '\\nCualquier consulta me avisás.'
+                %}
+                <a class="btn btn-success btn-sm"
+                   target="_blank"
+                   href="https://wa.me/{{ wa_phone }}?text={{ msg|urlencode }}">
+                   📲 Enviar por WhatsApp
+                </a>
+            {% endif %}
+
+            <a class="btn btn-secondary btn-sm"
+               href="{{ url_for('reparacion_detalle', reparacion_id=reparacion[0]) }}">
+                ← Volver
+            </a>
+        </div>
+
+        <!-- ENCABEZADO -->
+        <div class="presupuesto-header">
+
+            <div class="presupuesto-header-left">
+                <img src="{{ url_for('static', filename='img/doccar_logo.png') }}" class="presupuesto-logo">
+                <div>
+                    <div class="presupuesto-titulo">Presupuesto de Reparación</div>
+                    <div class="presupuesto-subtitulo">No válido como factura</div>
+                </div>
+            </div>
+
+            <div class="presupuesto-header-right">
+                <div class="presupuesto-etiqueta">N° de presupuesto</div>
+                <div class="presupuesto-numero">{{ "%06d"|format(factura_id) }}</div>
+                <div class="presupuesto-etiqueta mt-2">Fecha</div>
+                <div>{{ factura_fecha }}</div>
+            </div>
+        </div>
+
+        <!-- TALLER -->
+        <div class="presupuesto-seccion">
+            <div class="presupuesto-seccion-titulo">Taller</div>
+            <div><strong>Doccar Racing</strong></div>
+            <div>Dirección: Ferrari 247, CABA (1414)</div>
+            <div>Teléfono: 1162927439</div>
+        </div>
+
+        <!-- CLIENTE -->
+        <div class="presupuesto-seccion">
+            <div class="presupuesto-seccion-titulo">Cliente</div>
+            <div><strong>Nombre:</strong> {{ cliente[1] }} {{ cliente[2] }}</div>
+
+            {% if cliente[8] %}
+                <div><strong>Razón social:</strong> {{ cliente[8] }}</div>
+            {% endif %}
+
+            {% if cliente[7] %}
+                <div><strong>DNI/CUIT/CUIL:</strong> {{ cliente[7] }}</div>
+            {% endif %}
+
+            {% if cliente[3] %}
+                <div><strong>Teléfono:</strong> {{ cliente[3] }}</div>
+            {% endif %}
+        </div>
+
+        <!-- VEHÍCULO -->
+        <div class="presupuesto-seccion">
+            <div class="presupuesto-seccion-titulo">Vehículo</div>
+            <div>
+                <strong>Patente:</strong> {{ vehiculo[2] }} &nbsp; |
+                <strong>Marca/Modelo:</strong> {{ vehiculo[3] }} {{ vehiculo[4] }}
+            </div>
+
+            {% if vehiculo[5] %}
+                <div><strong>Año:</strong> {{ vehiculo[5] }}</div>
+            {% endif %}
+
+            {% if vehiculo[6] %}
+                <div><strong>Km:</strong> {{ vehiculo[6] }}</div>
+            {% endif %}
+
+            {% if reparacion[3] %}
+                <div><strong>Trabajo solicitado:</strong> {{ reparacion[3] }}</div>
+            {% endif %}
+        </div>
+
+        <!-- ÍTEMS -->
+        <div class="presupuesto-tabla">
+            <table class="table table-sm mb-0">
+                <thead>
+                    <tr>
+                        <th>Concepto</th>
+                        <th style="text-align:right;">Cant.</th>
+                        <th style="text-align:right;">Precio unit.</th>
+                        <th style="text-align:right;">Desc. %</th>
+                        <th style="text-align:right;">Subtotal</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for it in items %}
+                        {% set cantidad = it[3] %}
+                        {% set precio = it[4] %}
+                        {% set desc = it[5] or 0 %}
+                        {% set subtotal = cantidad * precio * (1 - desc/100) %}
+
+                        <tr>
+                            <td>{{ it[2].upper() }}</td>
+                            <td style="text-align:right;">{{ cantidad }}</td>
+                            <td style="text-align:right;">{{ "%.2f"|format(precio) }}</td>
+                            <td style="text-align:right;">{{ desc }}</td>
+                            <td style="text-align:right;">{{ "%.2f"|format(subtotal) }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- RESUMEN -->
+        <div class="presupuesto-resumen">
+            <div class="presupuesto-resumen-inner">
+                <div class="presupuesto-resumen-row">
+                    <span>Subtotal:</span>
+                    <strong>$ {{ "%.2f"|format(base_total) }}</strong>
+                </div>
+
+                <div class="presupuesto-resumen-row">
+                    <span>Descuento global:</span>
+                    <span>{{ descuento_global }}%</span>
+                </div>
+
+                <div class="presupuesto-resumen-row presupuesto-resumen-total">
+                    <span>Total final:</span>
+                    <span>$ {{ "%.2f"|format(total) }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="presupuesto-footer mt-3">
+            <small class="text-muted">
+                * Presupuesto válido por 30 días.  
+                Gracias por confiar en Doccar Racing.
+            </small>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}

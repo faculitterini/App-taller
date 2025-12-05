@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block contenido %}
+
+<h2 class="mb-1">
+    Reparaciones · {{ vehiculo[2] }} - {{ vehiculo[3] }} {{ vehiculo[4] }}
+</h2>
+<p class="text-muted mb-3">
+    Cliente: {{ cliente[2] }} {{ cliente[1] }}
+</p>
+
+<div class="card-dark-soft p-3 mb-3">
+    <form class="row g-2 align-items-end" method="get">
+        <input type="hidden" name="vehiculo_id" value="{{ vehiculo[0] }}">
+        <div class="col-12 col-md-3">
+            <label class="form-label mb-1 small text-muted">Desde</label>
+            <input type="date" name="desde" class="form-control" value="{{ desde }}">
+        </div>
+        <div class="col-12 col-md-3">
+            <label class="form-label mb-1 small text-muted">Hasta</label>
+            <input type="date" name="hasta" class="form-control" value="{{ hasta }}">
+        </div>
+        <div class="col-6 col-md-2 mt-2 mt-md-4">
+            <button class="btn btn-primary w-100" type="submit">Filtrar</button>
+        </div>
+        <div class="col-6 col-md-2 mt-2 mt-md-4">
+            <a href="{{ url_for('reparaciones_vehiculo', vehiculo_id=vehiculo[0]) }}"
+               class="btn btn-outline-light w-100">
+                Limpiar
+            </a>
+        </div>
+        <div class="col-12 col-md-2 mt-2 mt-md-4 text-md-end">
+            <a href="{{ url_for('reparacion_nueva', vehiculo_id=vehiculo[0]) }}"
+               class="btn btn-success w-100">
+                + Nueva reparación
+            </a>
+        </div>
+    </form>
+</div>
+
+<div class="card-dark-soft p-3">
+    <div class="table-responsive">
+        <table class="table table-sm table-dark-custom mb-0">
+            <thead>
+            <tr>
+                <th>Fecha</th>
+                <th>Descripción</th>
+                <th>Estado</th>
+                <th class="text-end">Acciones</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% if reparaciones %}
+                {% for r in reparaciones %}
+                    {# id, vehiculo_id, fecha, descripcion, notas, estado #}
+                    <tr>
+                        <td>{{ r[2] }}</td>
+                        <td>{{ r[3] }}</td>
+                        <td>{{ r[5] or '-' }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('reparacion_detalle', reparacion_id=r[0]) }}"
+                               class="btn btn-sm btn-secondary">
+                                Ver
+                            </a>
+                            <a href="{{ url_for('reparacion_editar', reparacion_id=r[0]) }}"
+                               class="btn btn-sm btn-primary">
+                                Editar
+                            </a>
+                            <a href="{{ url_for('reparacion_eliminar', reparacion_id=r[0]) }}"
+                               onclick="return confirm('¿Eliminar reparación e ítems asociados?');"
+                               class="btn btn-sm btn-danger">
+                                Eliminar
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="4" class="text-center text-muted py-3">
+                        No hay reparaciones registradas para este vehículo.
+                    </td>
+                </tr>
+            {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}

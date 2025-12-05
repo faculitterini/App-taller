@@ -1,0 +1,9 @@
+{
+  "name": "DocCar Racing Taller",
+  "short_name": "DocCar",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#212529",
+  "icons": []
+}

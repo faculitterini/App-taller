@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>Doccar Racing - Taller</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Bootstrap CSS (CDN) -->
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+        crossorigin="anonymous"
+    />
+
+    <style>
+        body {
+            background-color: #f5f5f5;
+        }
+
+        .navbar {
+            transition: background-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        /* Navbar estilo Doccar con degradé azul */
+        .navbar-doccar {
+            background: linear-gradient(90deg, #020617, #151e36, #16223b);
+            border-bottom: 2px solid rgba(248, 113, 113, 0.95); /* rojo suave */
+            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.6);
+        }
+
+        .navbar-brand img {
+            height: 130px;              /* logo más grande en escritorio */
+            transition: transform 0.25s ease, filter 0.25s ease;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6));
+        }
+
+        .navbar-brand img:hover {
+            transform: scale(1.08);
+        }
+
+        .navbar-nav .nav-link {
+            font-size: 0.95rem;
+            padding: 0.45rem 0.9rem;
+            border-radius: 999px;
+            color: #e5e7eb !important;
+            transition: background-color 0.2s ease, color 0.2s ease, transform 0.15s ease;
+        }
+
+        .navbar-nav .nav-link:hover {
+            background: radial-gradient(circle at top left,
+                        rgba(243, 126, 126, 0.22),
+                        transparent 95%);
+            color: #ffffff !important;
+            transform: translateY(-1px);
+        }
+
+        .navbar-nav .nav-link.active {
+            background: linear-gradient(135deg, #f97373, #ef4444);
+            color: #ffffff !important;
+            font-weight: 600;
+            box-shadow: 0 0 10px rgba(248, 113, 113, 0.65);
+        }
+
+        .user-chip {
+            background: rgba(15, 23, 42, 0.85);
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 0.8rem;
+        }
+
+        .logout-btn {
+            border-radius: 999px;
+            padding: 4px 14px;
+        }
+
+        .main-container {
+            max-width: 1100px;
+        }
+
+        @media print {
+            .d-print-none { display: none !important; }
+            body { background-color: #ffffff !important; }
+        }
+    </style>
+
+    <!-- Ajustes SOLO para móvil: se mantienen tus condiciones -->
+    <style>
+    @media (max-width: 576px) {
+        .navbar-brand img {
+            height: 36px !important;   /* un toque más grande que antes */
+        }
+        .navbar {
+            padding-top: 0.3rem !important;
+            padding-bottom: 0.3rem !important;
+        }
+        .navbar-toggler {
+            padding: 2px 6px !important;
+            font-size: 0.9rem !important;
+        }
+    }
+    </style>
+
+</head>
+<body>
+
+<!-- NAVBAR (no se imprime) -->
+<nav class="navbar navbar-expand-lg navbar-dark mb-4 d-print-none shadow-sm navbar-doccar">
+    <div class="container-fluid">
+
+        <!-- Solo logo -->
+        <a class="navbar-brand d-flex align-items-center" href="{{ url_for('dashboard') }}">
+            <img src="{{ url_for('static', filename='img/doccar_logo.png') }}" alt="DocCar Logo">
+        </a>
+
+        <!-- Botón hamburguesa -->
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                data-bs-target="#mainNavbar" aria-controls="mainNavbar"
+                aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="mainNavbar">
+
+            <!-- Menú -->
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                <li class="nav-item">
+                    <a class="nav-link{% if request.endpoint == 'dashboard' %} active{% endif %}"
+                       href="{{ url_for('dashboard') }}">Inicio</a>
+                </li>
+
+                <li class="nav-item">
+                    <a class="nav-link{% if request.endpoint == 'clientes' %} active{% endif %}"
+                       href="{{ url_for('clientes') }}">Clientes</a>
+                </li>
+
+                <li class="nav-item">
+                    <a class="nav-link{% if request.endpoint == 'facturas_listado' %} active{% endif %}"
+                       href="{{ url_for('facturas_listado') }}">Facturación</a>
+                </li>
+
+                <li class="nav-item">
+                    <a class="nav-link{% if request.endpoint == 'citas_listado' %} active{% endif %}"
+                       href="{{ url_for('citas_listado') }}">Citas</a>
+                </li>
+
+                {% if session.get('rol') == 'admin' %}
+                <li class="nav-item">
+                    <a class="nav-link{% if request.endpoint in ['usuarios','usuario_nuevo'] %} active{% endif %}"
+                       href="{{ url_for('usuarios') }}">Admin</a>
+                </li>
+                {% endif %}
+            </ul>
+
+            <!-- Usuario -->
+            {% if session.get('username') %}
+            <div class="d-flex align-items-center gap-2">
+                <span class="text-light small user-chip">
+                    👤 {{ session.get('username') }}
+                </span>
+                <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm logout-btn">
+                    Salir
+                </a>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+</nav>
+
+<!-- Contenedor principal -->
+<div class="container main-container bg-white p-4 rounded shadow-sm mb-5">
+    {% block contenido %}{% endblock %}
+</div>
+
+<!-- Bootstrap JS -->
+<script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+    crossorigin="anonymous"></script>
+
+</body>
+</html>

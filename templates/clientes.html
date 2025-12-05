@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block contenido %}
+
+<h2 class="mb-3">Clientes</h2>
+
+<div class="card-dark-soft p-3 mb-3">
+    <form class="row g-2" method="get">
+        <div class="col-12 col-md-6">
+            <input type="text"
+                   name="q"
+                   class="form-control"
+                   placeholder="Buscar por nombre, teléfono, email o patente"
+                   value="{{ q }}">
+        </div>
+
+        <div class="col-6 col-md-2">
+            <button class="btn btn-primary w-100">Buscar</button>
+        </div>
+
+        <div class="col-6 col-md-2">
+            <a href="{{ url_for('clientes') }}" class="btn btn-outline-light w-100">Limpiar</a>
+        </div>
+
+        <div class="col-12 col-md-2 mt-2 mt-md-0 text-md-end">
+            <a class="btn btn-success w-100"
+               href="{{ url_for('cliente_nuevo') }}">
+                + Nuevo cliente
+            </a>
+        </div>
+    </form>
+</div>
+
+<div class="card-dark-soft p-3">
+    <div class="table-responsive">
+        <table class="table table-sm table-dark-custom">
+
+            <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Teléfono</th>
+                <th>Email</th>
+                <th>Vehículos</th>
+                <th class="text-end">Acciones</th>
+            </tr>
+            </thead>
+
+            <tbody>
+            {% if clientes %}
+                {% for c in clientes %}
+                <tr>
+                    <td>{{ c[2] }} {{ c[1] }}</td>
+                    <td>{{ c[3] or '-' }}</td>
+                    <td>{{ c[4] or '-' }}</td>
+
+                    <td>
+                        <a href="{{ url_for('vehiculos_cliente', cliente_id=c[0]) }}"
+                           class="btn btn-sm btn-secondary">
+                            Ver vehículos
+                        </a>
+                    </td>
+
+                    <td class="text-end">
+                        <a href="{{ url_for('cliente_editar', id=c[0]) }}"
+                           class="btn btn-sm btn-primary">
+                            Editar
+                        </a>
+                        <a href="{{ url_for('cliente_eliminar', id=c[0]) }}"
+                           onclick="return confirm('¿Eliminar cliente?')"
+                           class="btn btn-sm btn-danger">
+                            Eliminar
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="5" class="text-center text-muted py-3">
+                        No hay clientes cargados.
+                    </td>
+                </tr>
+            {% endif %}
+            </tbody>
+
+        </table>
+    </div>
+</div>
+
+{% endblock %}
