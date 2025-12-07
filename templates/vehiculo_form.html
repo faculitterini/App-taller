@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block contenido %}
+
+<h3>
+    {% if vehiculo %}
+        Editar vehículo
+    {% else %}
+        Nuevo vehículo para {{ cliente[1] }} {{ cliente[2] }}
+    {% endif %}
+</h3>
+
+<form method="POST">
+    <input class="form-control mb-2" name="patente" placeholder="Patente"
+           value="{{ vehiculo and vehiculo[2] or '' }}">
+    <input class="form-control mb-2" name="marca" placeholder="Marca"
+           value="{{ vehiculo and vehiculo[3] or '' }}">
+    <input class="form-control mb-2" name="modelo" placeholder="Modelo"
+           value="{{ vehiculo and vehiculo[4] or '' }}">
+    <input class="form-control mb-2" name="anio" placeholder="Año"
+           value="{{ vehiculo and vehiculo[5] or '' }}">
+    <input class="form-control mb-2" name="km" placeholder="Kilómetros"
+           value="{{ vehiculo and vehiculo[6] or '' }}">
+    <textarea class="form-control mb-2" name="notas" placeholder="Notas">{{ vehiculo and vehiculo[7] or '' }}</textarea>
+
+    <button class="btn btn-primary">Guardar</button>
+    <a href="/clientes/{{ cliente[0] }}/vehiculos" class="btn btn-secondary">Cancelar</a>
+</form>
+
+{% endblock %}

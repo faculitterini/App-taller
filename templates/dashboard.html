@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% block contenido %}
+
+<div class="row g-3 mb-3">
+    <!-- Card métricas principales -->
+    <div class="col-12 col-xl-8">
+        <div class="card-dark p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <div>
+                    <div class="pill-label">Resumen rápido</div>
+                    <h5 class="mt-2 mb-0">Hoy en el taller</h5>
+                </div>
+                <span class="badge-pill-soft badge-pill-soft-success">
+                    Últimos 7 días
+                </span>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-6 col-md-3">
+                    <div class="card-dark-soft p-3 h-100">
+                        <div class="text-muted-soft small mb-1">En proceso</div>
+                        <div class="metric-value">{{ reparaciones_en_proceso }}</div>
+                        <div class="metric-sub">Reparaciones activas</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="card-dark-soft p-3 h-100">
+                        <div class="text-muted-soft small mb-1">Pendientes</div>
+                        <div class="metric-value">{{ reparaciones_pendientes }}</div>
+                        <div class="metric-sub">Ingresadas / esperando</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="card-dark-soft p-3 h-100">
+                        <div class="text-muted-soft small mb-1">Ingresos 7 días</div>
+                        <div class="metric-value">
+                            $ {{ "%.0f"|format(total_ingresos_7 or 0) }}
+                        </div>
+                        <div class="metric-sub">Facturas (no presupuestos)</div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="card-dark-soft p-3 h-100">
+                        <div class="text-muted-soft small mb-1">Balance 7 días</div>
+                        <div class="metric-value
+                            {% if (balance_7 or 0) >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            $ {{ "%.0f"|format(balance_7 or 0) }}
+                        </div>
+                        <div class="metric-sub">Ingresos - gastos</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card citas -->
+    <div class="col-12 col-xl-4">
+        <div class="card-dark-soft p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">Próximas citas</h6>
+                <a href="{{ url_for('citas_listado') }}" class="text-muted-soft small">
+                    Ver todas
+                </a>
+            </div>
+
+            {% if citas %}
+                <div class="list-group list-group-flush">
+                    {% for c in citas %}
+                        <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
+                            <div>
+                                <div class="small">{{ c[3] }}</div>
+                                <div class="text-muted-soft tiny">
+                                    {{ c[1] }} • {{ c[2] }} • {{ c[4] }}
+                                </div>
+                            </div>
+                            <span class="badge-pill-soft badge-pill-soft-success">
+                                Turno
+                            </span>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-muted-soft small">
+                    No hay citas próximas registradas.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <!-- Reparaciones en proceso -->
+    <div class="col-12 col-xl-7">
+        <div class="card-dark-soft p-3 h-100">
+            <div class="d-flex justify-content-between mb-2 align-items-center">
+                <h6 class="mb-0">Reparaciones en proceso</h6>
+                <span class="text-muted-soft small">
+                    Hoy: {{ reparaciones_hoy }} ingresadas
+                </span>
+            </div>
+
+            <div class="table-responsive" style="max-height: 260px; overflow-y: auto;">
+                <table class="table table-sm table-dark-custom align-middle mb-0">
+                    <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Fecha</th>
+                        <th>Cliente / Vehículo</th>
+                        <th>Trabajo</th>
+                        <th class="text-end">Estado</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% if trabajos %}
+                        {% for t in trabajos %}
+                            {# t = (id, fecha, estado, desc, patente, marca, modelo, nombre, apellido) #}
+                            <tr>
+                                <td>#{{ t[0] }}</td>
+                                <td>{{ t[1] }}</td>
+                                <td>
+                                    <div class="small">
+                                        {{ t[8] }} {{ t[7] }}
+                                    </div>
+                                    <div class="text-muted-soft tiny">
+                                        {{ t[4] }} • {{ t[5] }} {{ t[6] }}
+                                    </div>
+                                </td>
+                                <td class="small">{{ t[3] }}</td>
+                                <td class="text-end">
+                                    <span class="badge-pill-soft
+                                        {% if t[2] == 'En proceso' %}
+                                            badge-pill-soft-success
+                                        {% else %}
+                                            badge-pill-soft-danger
+                                        {% endif %}">
+                                        {{ t[2] }}
+                                    </span>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted-soft py-3">
+                                No hay reparaciones en proceso.
+                            </td>
+                        </tr>
+                    {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráfico ingresos/gastos -->
+    <div class="col-12 col-xl-5">
+    <div class="card-dark-soft p-3 h-100">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">Ingresos vs gastos (7 días)</h6>
+            <span class="text-muted-soft small">Montos diarios</span>
+        </div>
+        <div class="chart-wrapper">
+            <canvas id="chartIngresosGastos"></canvas>
+        </div>
+    </div>
+</div>
+
+</div>
+
+{% if last_backup_dt %}
+<div class="row g-3">
+    <div class="col-12 col-lg-4">
+        <div class="card-dark-soft p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted-soft small">Último backup</div>
+                    <div class="metric-value" style="font-size:1rem;">
+                        {{ last_backup_dt.strftime("%d/%m/%Y %H:%M") }}
+                    </div>
+                    <div class="metric-sub">
+                        Se crea automáticamente al iniciar la app.
+                    </div>
+                </div>
+                {% if session.get("rol") == "admin" %}
+                    <form method="post" action="{{ url_for('backup_manual') }}">
+                        <button type="submit" class="btn btn-sm btn-outline-light">
+                            Backup manual
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    (function() {
+        const ctx = document.getElementById('chartIngresosGastos');
+        if (!ctx) return;
+
+        const labels = {{ labels|tojson }};
+        const ingresos = {{ ingresos_por_dia|tojson }};
+        const gastos = {{ gastos_por_dia|tojson }};
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Ingresos',
+                        data: ingresos,
+                        tension: 0.35,
+                        fill: true,
+                        borderColor: 'rgba(45, 212, 191, 1)',
+                        backgroundColor: 'rgba(45, 212, 191, 0.15)',
+                        borderWidth: 2,
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Gastos',
+                        data: gastos,
+                        tension: 0.35,
+                        fill: true,
+                        borderColor: 'rgba(248, 113, 113, 1)',
+                        backgroundColor: 'rgba(248, 113, 113, 0.12)',
+                        borderWidth: 2,
+                        pointRadius: 0
+                    }
+                ]
+            },
+            options: {
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#e5e7eb', font: { size: 11 } }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#9ca3af', font: { size: 10 }},
+                        grid: { color: 'rgba(31, 41, 55, 0.7)' }
+                    },
+                    y: {
+                        ticks: { color: '#9ca3af', font: { size: 10 }},
+                        grid: { color: 'rgba(31, 41, 55, 0.7)' }
+                    }
+                }
+            }
+        });
+    })();
+</script>
+{% endblock %}

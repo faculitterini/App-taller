@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block contenido %}
+
+<h2 class="mb-3">Facturación y balance</h2>
+
+<div class="card-dark-soft p-3 mb-3">
+    <form class="row g-2 align-items-center" method="get">
+        <div class="col-12 col-md-3">
+            <label class="form-label mb-1 small text-muted">Desde</label>
+            <input type="date"
+                   name="desde"
+                   class="form-control"
+                   value="{{ desde }}">
+        </div>
+        <div class="col-12 col-md-3">
+            <label class="form-label mb-1 small text-muted">Hasta</label>
+            <input type="date"
+                   name="hasta"
+                   class="form-control"
+                   value="{{ hasta }}">
+        </div>
+        <div class="col-6 col-md-3 mt-2 mt-md-4">
+            <button type="submit" class="btn btn-primary w-100">
+                Aplicar filtros
+            </button>
+        </div>
+        <div class="col-6 col-md-3 mt-2 mt-md-4">
+            <a href="{{ url_for('facturas_listado') }}" class="btn btn-outline-light w-100">
+                Limpiar filtros
+            </a>
+        </div>
+    </form>
+</div>
+
+<div class="row g-3">
+    <!-- INGRESOS -->
+    <div class="col-12 col-lg-7">
+        <div class="card-dark-soft p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="mb-0">Ingresos por facturas</h5>
+                <span class="badge bg-success rounded-pill">
+                    Total: $ {{ '%.2f'|format(total_general or 0) }}
+                </span>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-sm table-dark-custom mb-0">
+                    <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Cliente</th>
+                        <th>Vehículo</th>
+                        <th class="text-end">Total</th>
+                        <th class="text-end">Detalle</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% if facturas %}
+                        {% for f in facturas %}
+                            {# f: id, fecha, total, nombre, apellido, patente, marca, modelo, reparacion_id, es_presupuesto #}
+                            <tr>
+                                <td>{{ f[1] }}</td>
+                                <td>{{ f[3] }} {{ f[4] }}</td>
+                                <td>{{ f[5] }} - {{ f[6] }} {{ f[7] }}</td>
+                                <td class="text-end">$ {{ '%.2f'|format(f[2] or 0) }}</td>
+                                <td class="text-end">
+                                    <a href="{{ url_for('reparacion_factura', reparacion_id=f[8]) }}"
+                                       class="btn btn-sm btn-outline-light">
+                                        Ver
+                                    </a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-3">
+                                No hay facturas para el período seleccionado.
+                            </td>
+                        </tr>
+                    {% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            <p class="mt-2 mb-0 small text-muted">
+                * Solo se muestran los registros que cuentan como <strong>facturas</strong> (no presupuestos).
+            </p>
+        </div>
+    </div>
+
+    <!-- RESUMEN -->
+    <div class="col-12 col-lg-5">
+        <div class="card-dark-soft p-3 h-100 d-flex flex-column">
+            <h5>Resumen del período</h5>
+
+            <div class="mt-3">
+                <div class="d-flex justify-content-between">
+                    <span>Ingresos por facturas:</span>
+                    <strong class="text-success">
+                        $ {{ '%.2f'|format(total_general or 0) }}
+                    </strong>
+                </div>
+                <div class="d-flex justify-content-between mt-1">
+                    <span>Gastos registrados:</span>
+                    <strong class="text-danger">
+                        $ {{ '%.2f'|format(total_gastos or 0) }}
+                    </strong>
+                </div>
+                <hr class="my-2">
+                <div class="d-flex justify-content-between">
+                    <span>Balance neto:</span>
+                    <strong class="{{ balance_neto >= 0 and 'text-success' or 'text-danger' }}">
+                        $ {{ '%.2f'|format(balance_neto or 0) }}
+                    </strong>
+                </div>
+            </div>
+
+            <p class="mt-3 small text-muted">
+                El balance neto se calcula como:
+                <br>
+                <span class="text-info">Ingresos por facturas - Gastos.</span><br>
+                Los presupuestos que todavía no se marcaron como reparaciones facturadas
+                no se incluyen en este cálculo.
+            </p>
+
+            <div class="mt-auto pt-2 d-flex justify-content-end">
+                <a href="{{ url_for('gastos_listado') }}" class="btn btn-outline-danger">
+                    Ver detalle de gastos →
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

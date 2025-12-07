@@ -1,0 +1,419 @@
+{% extends "base.html" %}
+
+{# Bloque para agregar cosas al <head> de base.html #}
+{% block head_extra %}
+    {# Nombre sugerido para el archivo al guardar como PDF #}
+    <meta name="filename" content="{{ (cliente[1] or '') }}_{{ (cliente[2] or '') }}_PRESUPUESTO_{{ '%06d'|format(factura_id) }}.pdf">
+    <title>{{ cliente[1] }} {{ cliente[2] }} - Presupuesto {{ '%06d'|format(factura_id) }}</title>
+{% endblock %}
+
+{% block contenido %}
+
+<style>
+
+/* ==============================
+   LAYOUT GENERAL
+============================== */
+
+.presupuesto-wrapper {
+    background: #f4f4f4;
+    padding: 15px 0;
+}
+
+.presupuesto-sheet {
+    position: relative;
+    background: #ffffff;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 32px 36px;
+    border-radius: 10px;
+    box-shadow: 0 0 8px rgba(0,0,0,0.08);
+    border-top: 6px solid #c1121f;
+}
+
+
+/* ==============================
+   ENCABEZADO CENTRADO
+============================== */
+
+.presupuesto-header {
+    text-align: center;
+    margin-bottom: 22px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #eee;
+}
+
+.presupuesto-logo-grande {
+    height: 250px;
+}
+
+.presupuesto-titulo {
+    font-size: 1.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-top: 6px;
+}
+
+.presupuesto-subtitulo {
+    font-size: 0.9rem;
+    color: #c1121f;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-top: -4px;
+}
+
+.presupuesto-etiqueta {
+    font-size: 0.80rem;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.presupuesto-numero {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+
+/* ==============================
+   BLOQUES DE INFORMACIÓN
+============================== */
+
+.presupuesto-seccion {
+    background: #fafafa;
+    border-left: 3px solid #c1121f;
+    padding: 10px 12px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+}
+
+.presupuesto-seccion-titulo {
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    font-size: 0.9rem;
+}
+
+
+/* ==============================
+   TABLA ÍTEMS
+============================== */
+
+.presupuesto-tabla {
+    margin-top: 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.presupuesto-tabla thead {
+    background: #111;
+    color: white;
+}
+
+
+/* ==============================
+   RESUMEN FINAL
+============================== */
+
+.presupuesto-resumen {
+    margin-top: 14px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.presupuesto-resumen-inner {
+    width: 260px;
+    background: #fff;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+}
+
+.presupuesto-resumen-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    margin-bottom: 4px;
+}
+
+.presupuesto-resumen-total {
+    font-size: 1rem;
+    font-weight: bold;
+    border-top: 2px solid #c1121f;
+    padding-top: 8px;
+}
+
+
+/* ==============================
+   IMPRESIÓN
+============================== */
+
+@media print {
+    /* Ocultar barra lateral, topbar y botones de acción */
+    .sidebar,
+    .topbar,
+    .no-print {
+        display: none !important;
+    }
+
+    body {
+        background: #ffffff !important;
+        margin: 0;
+        padding: 0;
+    }
+
+    .presupuesto-wrapper {
+        padding: 0;
+        margin: 0;
+    }
+
+    .presupuesto-sheet {
+        box-shadow: none;
+        border-radius: 0;
+        max-width: 100%;
+        padding: 24px 28px;
+    }
+}
+
+</style>
+
+<div class="presupuesto-wrapper">
+    <div class="presupuesto-sheet">
+
+        <!-- BOTONES (NO IMPRIMIBLES) -->
+        <div class="no-print mb-3 d-flex gap-2 flex-wrap">
+            <button onclick="window.print()" class="btn btn-dark btn-sm">🖨 Imprimir</button>
+
+            {% if wa_phone %}
+                {% set msg =
+                    'Hola ' ~ cliente[1] ~ ', te envío el presupuesto N° ' ~ factura_id ~ '.' ~
+                    '\\nPodés verlo acá: ' ~ presupuesto_url ~
+                    '\\nCualquier consulta me avisás.'
+                %}
+                <a class="btn btn-success btn-sm"
+                   target="_blank"
+                   href="https://wa.me/{{ wa_phone }}?text={{ msg|urlencode }}">
+                    📲 Enviar por WhatsApp
+                </a>
+            {% endif %}
+
+            <!-- BOTÓN AGREGAR AL BALANCE / ESTADO -->
+            {% if es_presupuesto %}
+                <form action="{{ url_for('factura_confirmar', factura_id=factura_id) }}"
+                      method="post"
+                      class="d-inline">
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        ✅ Agregar al balance
+                    </button>
+                </form>
+            {% else %}
+                <span class="badge bg-success align-self-center">
+                    ✅ Ya incluida en el balance
+                </span>
+            {% endif %}
+
+            <a class="btn btn-secondary btn-sm"
+               href="{{ url_for('reparacion_detalle', reparacion_id=reparacion[0]) }}">
+                ← Volver
+            </a>
+        </div>
+
+
+        <!-- ============================
+             ENCABEZADO CENTRADO
+        ============================ -->
+        <div class="presupuesto-header">
+
+            <img src="{{ url_for('static', filename='img/doccar_logo.png') }}"
+                 class="presupuesto-logo-grande">
+
+            <div class="presupuesto-titulo">Presupuesto de Reparación</div>
+            <div class="presupuesto-subtitulo">No válido como factura</div>
+
+            <div class="mt-2">
+                <span class="presupuesto-etiqueta">N°:</span>
+                <span class="presupuesto-numero">{{ "%06d"|format(factura_id) }}</span>
+
+                &nbsp;&nbsp;
+
+                <span class="presupuesto-etiqueta">Fecha:</span>
+                <span>{{ factura_fecha }}</span>
+            </div>
+
+        </div>
+
+
+
+        <!-- ============================
+             INFORMACIÓN DEL TALLER
+        ============================ -->
+        <div class="presupuesto-seccion">
+            <div class="presupuesto-seccion-titulo">Taller</div>
+            <div><strong>Doccar Racing</strong></div>
+            <div>Dirección: Ferrari 247, CABA (1414)</div>
+            <div>Teléfono: 1162927439</div>
+        </div>
+
+
+        <!-- ============================
+             INFORMACIÓN DEL CLIENTE
+        ============================ -->
+        <div class="presupuesto-seccion">
+            <div class="presupuesto-seccion-titulo">Cliente</div>
+            <div><strong>Nombre:</strong> {{ cliente[1] }} {{ cliente[2] }}</div>
+
+            {% if cliente[8] %}
+                <div><strong>Razón social:</strong> {{ cliente[8] }}</div>
+            {% endif %}
+
+            {% if cliente[7] %}
+                <div><strong>DNI/CUIT/CUIL:</strong> {{ cliente[7] }}</div>
+            {% endif %}
+
+            {% if cliente[3] %}
+                <div><strong>Teléfono:</strong> {{ cliente[3] }}</div>
+            {% endif %}
+        </div>
+
+
+        <!-- ============================
+             INFORMACIÓN DEL VEHÍCULO
+        ============================ -->
+        <div class="presupuesto-seccion">
+            <div class="presupuesto-seccion-titulo">Vehículo</div>
+            <div>
+                <strong>Patente:</strong> {{ vehiculo[2] }} &nbsp; |
+                <strong>Marca/Modelo:</strong> {{ vehiculo[3] }} {{ vehiculo[4] }}
+            </div>
+
+            {% if vehiculo[5] %}
+                <div><strong>Año:</strong> {{ vehiculo[5] }}</div>
+            {% endif %}
+
+            {% if vehiculo[6] %}
+                <div><strong>Km:</strong> {{ vehiculo[6] }}</div>
+            {% endif %}
+
+            {% if reparacion[3] %}
+                <div><strong>Trabajo solicitado:</strong> {{ reparacion[3] }}</div>
+            {% endif %}
+        </div>
+
+
+
+        <!-- ============================
+             TABLA DE ÍTEMS
+        ============================ -->
+        <div class="presupuesto-tabla">
+    <table class="table table-sm mb-0">
+        <thead>
+            <tr>
+                <th>Tipo</th>
+                <th>Concepto</th>
+                <th class="text-end">Cant.</th>
+                <th class="text-end">Precio unit.</th>
+                <th class="text-end">Desc. %</th>
+                <th class="text-end">Subtotal</th>
+            </tr>
+        </thead>
+        <tbody>
+
+            {# ============================
+               PRIMERO REPUESTOS
+            ============================ #}
+            <tr class="table-secondary">
+                <td colspan="6"><strong>Repuestos</strong></td>
+            </tr>
+            {% for it in items if it[6] == 'REPUESTO' %}
+                {% set cantidad = it[3] %}
+                {% set precio = it[4] %}
+                {% set desc = it[5] or 0 %}
+                {% set subtotal = cantidad * precio * (1 - desc/100) %}
+
+                <tr>
+                    <td>Repuesto</td>
+                    <td>{{ it[2].upper() }}</td>
+                    <td class="text-end">{{ cantidad }}</td>
+                    <td class="text-end">{{ "%.2f"|format(precio) }}</td>
+                    <td class="text-end">{{ desc }}</td>
+                    <td class="text-end">{{ "%.2f"|format(subtotal) }}</td>
+                </tr>
+            {% endfor %}
+
+            {# ============================
+               DESPUÉS SERVICIOS
+            ============================ #}
+            <tr class="table-secondary">
+                <td colspan="6"><strong>Servicios</strong></td>
+            </tr>
+            {% for it in items if it[6] == 'SERVICIO' %}
+                {% set cantidad = it[3] %}
+                {% set precio = it[4] %}
+                {% set desc = it[5] or 0 %}
+                {% set subtotal = cantidad * precio * (1 - desc/100) %}
+
+                <tr>
+                    <td>Servicio</td>
+                    <td>{{ it[2].upper() }}</td>
+                    <td class="text-end">{{ cantidad }}</td>
+                    <td class="text-end">{{ "%.2f"|format(precio) }}</td>
+                    <td class="text-end">{{ desc }}</td>
+                    <td class="text-end">{{ "%.2f"|format(subtotal) }}</td>
+                </tr>
+            {% endfor %}
+
+        </tbody>
+    </table>
+</div>
+
+
+        <!-- ============================
+             RESUMEN FINAL
+        ============================ -->
+        <div class="presupuesto-resumen">
+            <div class="presupuesto-resumen-inner">
+                <div class="presupuesto-resumen-row">
+                    <span>Subtotal:</span>
+                    <strong>$ {{ "%.2f"|format(base_total) }}</strong>
+                </div>
+
+                <div class="presupuesto-resumen-row">
+                    <span>Descuento global:</span>
+                    <span>{{ descuento_global }}%</span>
+                </div>
+
+                <div class="presupuesto-resumen-row presupuesto-resumen-total">
+                    <span>Total final:</span>
+                    <span>$ {{ "%.2f"|format(total) }}</span>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="presupuesto-footer mt-3">
+            <small class="text-muted">
+                * Presupuesto válido por 30 días.  
+                Gracias por confiar en Doccar Racing.
+            </small>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+    {{ super() }}
+    {# Armamos el nombre del archivo: 0066-JuanPerez #}
+    {% set numero_factura = "%06d"|format(factura_id) %}
+    {% set nombre_cliente = (cliente[1] ~ cliente[2])|replace(" ", "") %}
+    {% set nombre_archivo = numero_factura ~ "-" ~ nombre_cliente %}
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // Esto es lo que el navegador suele usar como nombre al "Guardar como PDF"
+            document.title = "{{ nombre_archivo }}";
+        });
+    </script>
+{% endblock %}

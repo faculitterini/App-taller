@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block contenido %}
+
+<h2 class="mb-3">Gastos del taller</h2>
+
+<div class="card-dark-soft p-3 mb-3">
+    <form class="row g-2 align-items-end" method="get">
+        <div class="col-12 col-md-3">
+            <label class="form-label mb-1 small text-muted">Desde</label>
+            <input type="date"
+                   name="desde"
+                   class="form-control"
+                   value="{{ desde }}">
+        </div>
+        <div class="col-12 col-md-3">
+            <label class="form-label mb-1 small text-muted">Hasta</label>
+            <input type="date"
+                   name="hasta"
+                   class="form-control"
+                   value="{{ hasta }}">
+        </div>
+        <div class="col-6 col-md-3 mt-2 mt-md-4">
+            <button type="submit" class="btn btn-primary w-100">
+                Filtrar
+            </button>
+        </div>
+        <div class="col-6 col-md-3 mt-2 mt-md-4">
+            <a href="{{ url_for('gastos_listado') }}"
+               class="btn btn-outline-light w-100">
+                Limpiar
+            </a>
+        </div>
+    </form>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-lg-4">
+        <div class="card-dark-soft p-3 h-100">
+            <h5 class="mb-3">Nuevo gasto</h5>
+            <form method="post" action="{{ url_for('gasto_nuevo') }}">
+                <div class="mb-2">
+                    <label class="form-label small text-muted">Fecha *</label>
+                    <input type="date" name="fecha" class="form-control" required>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small text-muted">Categoría</label>
+                    <input type="text" name="categoria" class="form-control"
+                           placeholder="Herramientas, comida, repuestos, etc.">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small text-muted">Descripción</label>
+                    <textarea name="descripcion" rows="3" class="form-control"
+                              placeholder="Detalle del gasto"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Monto *</label>
+                    <input type="number" step="0.01" min="0"
+                           name="monto" class="form-control" required>
+                </div>
+                <button class="btn btn-danger w-100" type="submit">
+                    Guardar gasto
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-8">
+        <div class="card-dark-soft p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="mb-0">Listado de gastos</h5>
+                <span class="badge bg-danger rounded-pill">
+                    Total: $ {{ '%.2f'|format(total_gastos or 0) }}
+                </span>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-sm table-dark-custom mb-0">
+                    <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Categoría</th>
+                        <th>Descripción</th>
+                        <th class="text-end">Monto</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% if gastos %}
+                        {% for g in gastos %}
+                            {# id, fecha, categoria, descripcion, monto #}
+                            <tr>
+                                <td>{{ g[1] }}</td>
+                                <td>{{ g[2] or '-' }}</td>
+                                <td>{{ g[3] or '-' }}</td>
+                                <td class="text-end">$ {{ '%.2f'|format(g[4] or 0) }}</td>
+                                <td class="text-end">
+                                    <a href="{{ url_for('gasto_eliminar', gasto_id=g[0]) }}"
+                                       onclick="return confirm('¿Eliminar gasto?');"
+                                       class="btn btn-sm btn-danger">
+                                        X
+                                    </a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-3">
+                                No hay gastos en el período seleccionado.
+                            </td>
+                        </tr>
+                    {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

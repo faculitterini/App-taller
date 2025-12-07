@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block contenido %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>{{ 'Editar ítem' if item else 'Nuevo ítem' }}</h3>
+    <a href="{{ url_for('reparacion_detalle', reparacion_id=reparacion[0]) }}"
+       class="btn btn-secondary btn-sm">
+        ← Volver a la reparación
+    </a>
+</div>
+
+<form method="post" class="row g-3">
+
+    <!-- CONCEPTO -->
+    <div class="col-12">
+        <label class="form-label">Concepto</label>
+        <input type="text"
+               name="concepto"
+               class="form-control"
+               style="text-transform: uppercase;"
+               list="conceptos_list"
+               value="{{ item[2] if item else '' }}"
+               required>
+
+        <datalist id="conceptos_list">
+            {% if conceptos %}
+                {% for c in conceptos %}
+                    <option value="{{ c[1] }}">
+                {% endfor %}
+            {% endif %}
+        </datalist>
+
+        {% if conceptos %}
+        <div class="mt-2 small text-muted">
+            Conceptos guardados (click en la ❌ para borrar de las sugerencias):
+        </div>
+        <div class="mt-1 d-flex flex-wrap gap-1">
+            {% for c in conceptos %}
+                <span class="badge bg-light text-dark border">
+                    {{ c[1] }}
+                    <a href="{{ url_for('item_concepto_eliminar', concepto_id=c[0]) }}"
+                       class="ms-1 text-danger text-decoration-none"
+                       title="Eliminar concepto guardado"
+                       onclick="return confirm('¿Eliminar {{ c[1] }} de las sugerencias?');">
+                        ×
+                    </a>
+                </span>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- CANTIDAD -->
+    <div class="col-sm-4 col-6">
+        <label class="form-label">Cantidad</label>
+        <input type="number" step="0.01" name="cantidad"
+               class="form-control"
+               value="{{ item[3] if item else '1' }}">
+    </div>
+
+    <!-- PRECIO UNITARIO -->
+    <div class="col-sm-4 col-6">
+        <label class="form-label">Precio unitario</label>
+        <input type="number" step="0.01" name="precio_unitario"
+               class="form-control"
+               value="{{ item[4] if item else '0' }}">
+    </div>
+
+    <!-- DESCUENTO -->
+    <div class="col-sm-4 col-6">
+        <label class="form-label">Descuento (%)</label>
+        <input type="number" step="0.01" name="descuento"
+               class="form-control"
+               value="{{ item[5] if item and item[5] is not none else '0' }}">
+    </div>
+
+    <!-- TIPO (SERVICIO / REPUESTO) -->
+    <div class="col-sm-4 col-6">
+        <label for="tipo" class="form-label">Tipo</label>
+
+        {% set tipo_actual = item[6] if item else None %}
+
+        <select name="tipo" id="tipo" class="form-select" required>
+            <option value="" disabled {% if not tipo_actual %}selected{% endif %}>
+                -- Seleccionar tipo --
+            </option>
+            <option value="SERVICIO" {% if tipo_actual == "SERVICIO" %}selected{% endif %}>
+                Servicio
+            </option>
+            <option value="REPUESTO" {% if tipo_actual == "REPUESTO" %}selected{% endif %}>
+                Repuesto
+            </option>
+        </select>
+    </div>
+
+    <!-- BOTONES -->
+    <div class="col-12 d-flex gap-2">
+        <button type="submit" class="btn btn-primary">
+            {{ 'Guardar cambios' if item else 'Agregar ítem' }}
+        </button>
+        <a href="{{ url_for('reparacion_detalle', reparacion_id=reparacion[0]) }}"
+           class="btn btn-outline-secondary">
+            Cancelar
+        </a>
+    </div>
+
+</form>
+
+{% endblock %}

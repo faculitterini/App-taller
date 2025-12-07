@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block contenido %}
+
+<h3 class="mb-3">
+    {% if cliente %}
+        Editar cliente
+    {% else %}
+        Nuevo cliente
+    {% endif %}
+</h3>
+
+<p class="text-muted small mb-4">
+    Los campos marcados con <span class="text-danger">*</span> son obligatorios.
+</p>
+
+<form method="POST">
+
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <label class="form-label">
+                Nombre <span class="text-danger">*</span>
+            </label>
+            <input type="text"
+                   name="nombre"
+                   class="form-control"
+                   required
+                   value="{{ cliente[1] if cliente else '' }}">
+        </div>
+
+        <div class="col-md-6">
+            <label class="form-label">
+                Apellido <span class="text-danger">*</span>
+            </label>
+            <input type="text"
+                   name="apellido"
+                   class="form-control"
+                   required
+                   value="{{ cliente[2] if cliente else '' }}">
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <label class="form-label">
+                Teléfono <span class="text-danger">*</span>
+            </label>
+            <input type="text"
+                   name="telefono"
+                   class="form-control"
+                   required
+                   value="{{ cliente[3] if cliente else '' }}">
+        </div>
+
+        <div class="col-md-6">
+            <label class="form-label">Email</label>
+            <input type="email"
+                   name="email"
+                   class="form-control"
+                   value="{{ cliente[4] if cliente else '' }}">
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Dirección</label>
+        <input type="text"
+               name="direccion"
+               class="form-control"
+               value="{{ cliente[5] if cliente else '' }}">
+    </div>
+
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <label class="form-label">
+                Documento (DNI / CUIT / CUIL)
+            </label>
+            <input type="text"
+                   name="documento"
+                   class="form-control"
+                   value="{% if cliente and cliente|length > 7 %}{{ cliente[7] or '' }}{% endif %}">
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">
+                Razón social (opcional)
+            </label>
+            <input type="text"
+                   name="razon_social"
+                   class="form-control"
+                   value="{% if cliente and cliente|length > 8 %}{{ cliente[8] or '' }}{% endif %}">
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Notas</label>
+        <textarea name="notas"
+                  class="form-control"
+                  rows="3">{{ cliente[6] if cliente and cliente|length > 6 else '' }}</textarea>
+    </div>
+
+    <div class="d-flex justify-content-between">
+        <a href="{{ url_for('clientes') }}" class="btn btn-secondary">
+            Volver
+        </a>
+        <button type="submit" class="btn btn-primary">
+            Guardar
+        </button>
+    </div>
+
+</form>
+
+{% endblock %}

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block contenido %}
+
+<h2 class="mb-3">Citas / Turnos</h2>
+
+<div class="card-dark-soft p-3 mb-3">
+    <form class="row g-2 align-items-end" method="get">
+        <div class="col-12 col-md-3">
+            <label class="form-label mb-1 small text-muted">Desde</label>
+            <input type="date"
+                   name="desde"
+                   class="form-control"
+                   value="{{ desde }}">
+        </div>
+        <div class="col-12 col-md-3">
+            <label class="form-label mb-1 small text-muted">Hasta</label>
+            <input type="date"
+                   name="hasta"
+                   class="form-control"
+                   value="{{ hasta }}">
+        </div>
+        <div class="col-6 col-md-2 mt-2 mt-md-4">
+            <button class="btn btn-primary w-100" type="submit">
+                Filtrar
+            </button>
+        </div>
+        <div class="col-6 col-md-2 mt-2 mt-md-4">
+            <a href="{{ url_for('citas_listado') }}"
+               class="btn btn-outline-light w-100">
+                Limpiar
+            </a>
+        </div>
+        <div class="col-12 col-md-2 mt-2 mt-md-4 text-md-end">
+            <a href="{{ url_for('cita_nueva') }}"
+               class="btn btn-success w-100">
+                + Nueva cita
+            </a>
+        </div>
+    </form>
+</div>
+
+<div class="card-dark-soft p-3">
+    <div class="table-responsive">
+        <table class="table table-sm table-dark-custom mb-0">
+            <thead>
+            <tr>
+                <th>Fecha</th>
+                <th>Hora</th>
+                <th>Cliente</th>
+                <th>Teléfono</th>
+                <th>Descripción</th>
+                <th class="text-end">Acciones</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% if citas %}
+                {% for c in citas %}
+                    {# id, fecha, hora, cliente_nombre, telefono, descripcion #}
+                    <tr>
+                        <td>{{ c[1] }}</td>
+                        <td>{{ c[2] }}</td>
+                        <td>{{ c[3] }}</td>
+                        <td>{{ c[4] or '-' }}</td>
+                        <td>{{ c[5] or '-' }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('cita_editar', cita_id=c[0]) }}"
+                               class="btn btn-sm btn-primary">
+                                Editar
+                            </a>
+                            <a href="{{ url_for('cita_eliminar', cita_id=c[0]) }}"
+                               onclick="return confirm('¿Eliminar cita?');"
+                               class="btn btn-sm btn-danger">
+                                Eliminar
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-3">
+                        No hay citas para el período seleccionado.
+                    </td>
+                </tr>
+            {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
