@@ -1,158 +1,346 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
+
 <head>
-    <meta charset="utf-8">
-    <title>Doccar Racing - Taller mecánico</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            margin: 0;
-            background: #f4f4f4;
-            color: #222;
-        }
-        header {
-            background: #111;
-            color: #fff;
-            padding: 16px 24px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        header h1 {
-            margin: 0;
-            font-size: 1.3rem;
-            letter-spacing: 1px;
-        }
-        header span {
-            font-size: 0.9rem;
-            opacity: 0.8;
-        }
-        main {
-            max-width: 960px;
-            margin: 24px auto;
-            background: #fff;
-            padding: 24px;
-            border-radius: 10px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        }
-        h2 { margin-top: 0; }
+  <!-- Basic -->
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <!-- Mobile Metas -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+  <!-- Site Metas -->
+  <meta name="keywords" content="taller mecanico, service, mecanica automotor, alineacion, balanceo, tren delantero" />
+  <meta name="description" content="Doccar es un taller mecánico integral. Service, mecánica ligera, diagnosis por escáner y mantenimiento para tu auto." />
+  <meta name="author" content="Doccar" />
+  <link rel="shortcut icon" href="images/favicon.png" type="image/x-icon">
+  <title>Doccar | Taller mecánico & Service</title>
 
-        .grid {
-            display: grid;
-            gap: 16px;
-        }
-        @media (min-width: 768px) {
-            .grid-2 {
-                grid-template-columns: 1.3fr 1fr;
-            }
-        }
+  <!-- bootstrap core css -->
+  <link rel="stylesheet" type="text/css" href="css/bootstrap.css" />
 
-        .card {
-            border-radius: 10px;
-            border: 1px solid #eee;
-            padding: 16px 18px;
-        }
+  <!--owl slider stylesheet -->
+  <link rel="stylesheet" type="text/css"
+    href="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/assets/owl.carousel.min.css" />
+  <!-- font awesome style -->
+  <link href="css/font-awesome.min.css" rel="stylesheet" />
 
-        .badge {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 999px;
-            font-size: 0.75rem;
-            background: #111;
-            color: #fff;
-        }
-
-        ul {
-            padding-left: 18px;
-        }
-
-        .whatsapp-btn {
-            display: inline-block;
-            padding: 10px 18px;
-            border-radius: 999px;
-            border: none;
-            text-decoration: none;
-            background: #25d366;
-            color: #fff;
-            font-weight: 600;
-            font-size: 0.95rem;
-        }
-
-        .footer {
-            text-align: center;
-            font-size: 0.75rem;
-            color: #777;
-            margin: 18px 0 8px;
-        }
-
-        .hero-text {
-            font-size: 1rem;
-            line-height: 1.5;
-        }
-    </style>
+  <!-- Custom styles for this template -->
+  <link href="css/style.css" rel="stylesheet" />
+  <!-- responsive style -->
+  <link href="css/responsive.css" rel="stylesheet" />
 </head>
+
 <body>
-<header>
-    <div>
-        <h1>DOCCAR RACING</h1>
-        <span>Taller mecánico automotriz</span>
+  <div class="hero_area">
+    <!-- header section strats -->
+    <header class="header_section">
+      <div class="container">
+        <nav class="navbar navbar-expand-lg custom_nav-container px-0">
+          <!-- LOGO COMO IMAGEN -->
+          <a class="navbar-brand" href="index.html">
+            <img src="images/doccar_logo.png" alt="Doccar Taller Mecánico" style="height:80px;">
+          </a>
+
+          <div class="contact_nav" id="">
+            <a class="nav-link" href="tel:+541160000000">
+              <i class="fa fa-phone" aria-hidden="true"></i>
+              <span>+54 11 6000-0000</span>
+            </a>
+            <a class="nav-link" href="#">
+              <i class="fa fa-map-marker" aria-hidden="true"></i>
+              <span>Doccar - Zona Caballito (Parque Centenario)</span>
+            </a>
+            <a class="nav-link" href="#">
+              <i class="fa fa-calendar-check-o" aria-hidden="true"></i>
+              <span>Lun a Vie 9 a 18 · Sáb 9 a 13</span>
+            </a>
+            <!-- BOTÓN WHATSAPP DESTACADO EN EL HEADER -->
+            <a class="nav-link"
+               href="https://wa.me/5491160000000?text=Hola%20Doccar%2C%20quiero%20pedir%20un%20turno%20para%20mi%20auto."
+               style="background:#25D366;border-radius:20px;padding:5px 12px;color:#fff;">
+              <i class="fa fa-whatsapp" aria-hidden="true"></i>
+            </a>
+          </div>
+        </nav>
+      </div>
+    </header>
+    <!-- end header section -->
+
+    <!-- slider section -->
+    <section class=" slider_section position-relative">
+      <div class="custom_nav2">
+        <div class="container">
+          <nav class="navbar navbar-expand-lg custom_nav-container ">
+            <button class="navbar-toggler" type="button" data-toggle="collapse"
+              data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false"
+              aria-label="Toggle navigation">
+              <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarSupportedContent">
+              <div class="d-flex  flex-column flex-lg-row align-items-center">
+                <ul class="navbar-nav">
+                  <li class="nav-item active">
+                    <a class="nav-link" href="index.html">Inicio <span class="sr-only">(actual)</span></a>
+                  </li>
+                  <li class="nav-item">
+                    <a class="nav-link" href="#servicios">Servicios</a>
+                  </li> 
+                  <li class="nav-item">
+                    <a class="nav-link" href="#contacto">Contacto</a>
+                  </li>
+                </ul>
+                <form class="form-inline my-2 my-lg-0 ml-0 ml-lg-4 mb-3 mb-lg-0">
+                  <button class="btn  my-2 my-sm-0 nav_search-btn" type="button">
+                    <i class="fa fa-car" aria-hidden="true"></i>
+                  </button>
+                </form>
+              </div>
+            </div>
+          </nav>
+        </div>
+      </div>
+
+      <div class="slider_container">
+        <div id="carouselExampleIndicators" class="carousel slide" data-ride="carousel">
+          <div class="carousel-inner">
+            <!-- SLIDE 1 -->
+            <div class="carousel-item active">
+              <div class="container">
+                <div class="row">
+                  <div class="col-md-6">
+                    <div class="detail-box">
+                      <h1>
+                        TALLER MECÁNICO<br>
+                        INTEGRAL PARA TU AUTO<br>
+                        Y TU FAMILIA
+                      </h1>
+                      <p>
+                        En Doccar cuidamos tu vehículo como si fuera nuestro. Realizamos mantenimiento preventivo,
+                        reparación general, frenos, suspensión, electrónica y mucho más, con foco en transparencia y confianza.
+                      </p>
+                      <div class="btn-box">
+                        <a href="https://wa.me/5491160000000?text=Hola%20Doccar%2C%20quiero%20pedir%20un%20turno%20para%20mi%20auto."
+                           class="btn-1">
+                          Pedir turno ahora
+                        </a>
+                        <a href="#servicios" class="btn-2">
+                          Ver servicios
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="img-box">
+                      <img src="images/slider-img.jpg" alt="Doccar Taller Mecánico">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <!-- end slider section -->
+  </div>
+
+  <!-- SACAMOS LA SECCIÓN NOSOTROS COMPLETA -->
+
+  <!-- service section -->
+  <section id="servicios" class="service_section layout_padding">
+    <div class="container">
+      <div class="heading_container heading_center ">
+        <h2 class="">
+          Servicios que ofrecemos
+        </h2>
+        <p class="col-lg-8 px-0">
+          Desde un simple cambio de aceite hasta reparaciones más complejas, en Doccar cuidamos tu auto con procesos
+          claros y repuestos de calidad.
+        </p>
+      </div>
+      <div class="row">
+        <div class="col-md-6 col-lg-4 mx-auto">
+          <div class="box ">
+            <div class="img-box">
+              <img src="images/s1.jpg" alt="Service y mantenimiento" />
+            </div>
+            <div class="detail-box">
+              <h5>Service y mantenimiento</h5>
+              <p>
+                Service completo, cambio de aceite y filtros, chequeos preventivos y mantenimiento programado según el
+                plan de tu vehículo.
+              </p>
+              <a href="#contacto">
+                Consultar <i class="fa fa-arrow-circle-o-right" aria-hidden="true"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6 col-lg-4 mx-auto">
+          <div class="box ">
+            <div class="img-box">
+              <img src="images/s2.jpg" alt="Frenos y tren delantero" />
+            </div>
+            <div class="detail-box">
+              <h5>Frenos y tren delantero</h5>
+              <p>
+                Cambio de pastillas, discos, amortiguadores, bujes y revisión completa del tren delantero para que tu
+                auto frene y se sienta seguro.
+              </p>
+              <a href="#contacto">
+                Consultar <i class="fa fa-arrow-circle-o-right" aria-hidden="true"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6 col-lg-4 mx-auto">
+          <div class="box ">
+            <div class="img-box">
+              <img src="images/s3.jpg" alt="Diagnóstico por escáner" />
+            </div>
+            <div class="detail-box">
+              <h5>Diagnóstico por escáner</h5>
+              <p>
+                Lectura de códigos de falla, análisis de sensores y módulos electrónicos para encontrar problemas a
+                tiempo y evitar gastos mayores.
+              </p>
+              <a href="#contacto">
+                Consultar <i class="fa fa-arrow-circle-o-right" aria-hidden="true"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="btn-box">
+        <a href="https://wa.me/5491160000000?text=Hola%20Doccar%2C%20quiero%20consultar%20por%20un%20servicio.">
+          Escribinos por WhatsApp
+        </a>
+      </div>
     </div>
-    <!-- IMPORTANTE:
-         Para que el panel quede "oculto",
-         acá NO ponemos link a /panel -->
-    <!-- <a href="/panel" style="color:#fff; font-size:0.85rem; text-decoration:none;">Ingreso taller</a> -->
-</header>
+  </section>
+  <!-- service section ends -->
+  
 
-<main>
-    <section class="grid grid-2">
-        <div class="card">
-            <span class="badge">Servicio a clientes</span>
-            <h2>Tu auto en manos de gente que sabe</h2>
-            <p class="hero-text">
-                Mantenimiento, diagnóstico y reparación de vehículos.
-                Trabajamos con turno previo para que no pierdas tiempo y siempre sepas
-                qué se está haciendo a tu auto.
-            </p>
-            <ul>
-                <li>Mantenimiento preventivo (cambio de aceite, filtros, chequeos generales)</li>
-                <li>Diagnóstico por scanner</li>
-                <li>Frenos, tren delantero, embrague</li>
-                <li>Puesta a punto y revisión antes de viajes</li>
-            </ul>
+  <!-- contact section -->
+  <section id="contacto" class="contact_section ">
+    <div class="container">
+      <div class="row">
+        <div class="col-md-5">
+          <div class="form_container">
+            <div class="heading_container">
+              <h2>Escribinos</h2>
+            </div>
+            <form action="" method="post">
+              <div>
+                <input type="text" name="nombre" placeholder="Nombre y apellido" required />
+              </div>
+              <div>
+                <input type="email" name="email" placeholder="Correo electrónico" />
+              </div>
+              <div>
+                <input type="text" name="telefono" placeholder="Teléfono de contacto" />
+              </div>
+              <div>
+                <input type="text" name="mensaje" class="message-box" placeholder="Mensaje" required />
+              </div>
+              <div class="d-flex ">
+                <button type="submit">
+                  ENVIAR
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-
-        <div class="card">
-            <h2>Contacto</h2>
-            <p><strong>WhatsApp:</strong> <a href="https://wa.me/5491160235566" target="_blank">+54 9 11 6023-5566</a></p>
-            <p><strong>Dirección:</strong> (tu dirección acá)</p>
-            <p><strong>Horarios:</strong> Lun a Vie 9 a 18 hs</p>
-
-            <p style="margin-top:16px;">
-                <a class="whatsapp-btn" href="https://wa.me/5491160235566" target="_blank">
-                    Escribinos por WhatsApp
-                </a>
-            </p>
+        <div class="col-md-7">
+          <div class="img-box">
+            <img src="images/contact-img.jpg" alt="Contacto Doccar">
+          </div>
         </div>
-    </section>
+      </div>
+    </div>
+  </section>
+  <!-- end contact section -->
 
-    <section class="card" style="margin-top:18px;">
-        <h2>¿Por qué elegir Doccar Racing?</h2>
-        <ul>
-            <li>Te explicamos el trabajo en lenguaje simple, sin tecnicismos.</li>
-            <li>Te mantenemos al tanto por WhatsApp del avance de la reparación.</li>
-            <li>Respetamos el presupuesto acordado y te avisamos antes de cualquier cambio.</li>
-        </ul>
-    </section>
-</main>
+  <!-- map section -->
+  <<section class="map_section">
+  <div class="map_container">
+    <div class="map">
+      <iframe 
+        src="https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d820.9980630309078!2d-58.43883717684466!3d-34.60435742804718!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1ses!2sar!4v1765194494965!5m2!1ses!2sar"
+        width="100%" height="100%" style="border:0;" 
+        allowfullscreen="" loading="lazy" 
+        referrerpolicy="no-referrer-when-downgrade">
+      </iframe>
+    </div>
+  </div>
+</section>
 
-<div class="footer">
-    © <span id="year"></span> Doccar Racing — Taller mecánico automotriz
-</div>
+  <!-- end map section -->
 
-<script>
-    document.getElementById('year').textContent = new Date().getFullYear();
-</script>
+  <!-- info section -->
+  <section class="info_section ">
+    <div class="info_container ">
+      <div class="container">
+        <div class="info_contact ">
+          <a href="#" class="link-box">
+            <i class="fa fa-map-marker" aria-hidden="true"></i>
+            <span>Caballito (Parque Centenario)</span>
+          </a>
+          <a href="tel:+541160000000" class="link-box">
+            <i class="fa fa-phone" aria-hidden="true"></i>
+            <span>+54 11 6000-0000</span>
+          </a>
+          <a href="mailto:contacto@doccar.com.ar" class="link-box">
+            <i class="fa fa-envelope" aria-hidden="true"></i>
+            <span>contacto@doccar.com.ar</span>
+          </a>
+        </div>
+        <div class="social_container">
+          <div class="heading_container heading_center">
+            <h2>Seguinos</h2>
+            <p class="col-md-6 col-lg-5 mx-auto px-0">
+              Enterate de novedades, turnos y consejos para cuidar tu auto en nuestras redes sociales.
+            </p>
+          </div>
+          <div class="social-box">
+            
+            <a href="https://www.instagram.com/doccarracing/"><i class="fa fa-instagram" aria-hidden="true"></i></a>
+            <a href="#"><i class="fa fa-whatsapp" aria-hidden="true"></i></a>
+            
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <!-- end info section -->
+
+  <!-- footer section -->
+  <footer class="footer_section">
+    <div class="container">
+      <p>
+        &copy; <span id="displayYear"></span> Doccar. Todos los derechos reservados.
+      </p>
+    </div>
+  </footer>
+  <!-- footer section -->
+
+  <!-- jQery -->
+  <script src="js/jquery-3.4.1.min.js"></script>
+  <!-- popper js -->
+  <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"
+    integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksVQRVvoxMfooAo"
+    crossorigin="anonymous"></script>
+  <!-- bootstrap js -->
+  <script src="js/bootstrap.js"></script>
+  <!-- owl slider -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/OwlCarousel2/2.3.4/owl.carousel.min.js"></script>
+  <!-- custom js -->
+  <script src="js/custom.js"></script>
+  <!-- Google Map -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCh39n5U-4IoWpsVGUHWdqB6puEkhRLdmI&callback=myMap">
+  </script>
+  <!-- End Google Map -->
+
 </body>
+
 </html>
