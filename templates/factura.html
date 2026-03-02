@@ -189,7 +189,6 @@
             <table class="table table-sm mb-0">
                 <thead>
                 <tr>
-                    <th>Tipo</th>
                     <th>Concepto</th>
                     <th class="text-end">Cant.</th>
                     <th class="text-end">Precio unit.</th>
@@ -201,18 +200,15 @@
 
                 <!-- REPUESTOS -->
                 <tr class="table-secondary">
-                    <td colspan="6"><strong>Repuestos</strong></td>
+                    <td colspan="5"><strong>Repuestos</strong></td>
                 </tr>
-                {% set hay_repuestos = false %}
                 {% for it in items if it[6] == 'REPUESTO' %}
-                    {% set hay_repuestos = true %}
                     {% set cantidad = it[3] %}
                     {% set precio = it[4] %}
                     {% set desc = it[5] or 0 %}
                     {% set subtotal = cantidad * precio * (1 - desc/100) %}
 
                     <tr>
-                        <td>Repuesto</td>
                         <td>{{ it[2].upper() }}</td>
                         <td class="text-end">{{ cantidad }}</td>
                         <td class="text-end">{{ "%.2f"|format(precio) }}</td>
@@ -222,13 +218,13 @@
                 {% endfor %}
 
                 <tr>
-                    <td colspan="5" class="text-end fw-bold">Subtotal repuestos</td>
+                    <td colspan="4" class="text-end fw-bold">Subtotal repuestos</td>
                     <td class="text-end fw-bold">$ {{ "%.2f"|format(subtotal_repuestos or 0) }}</td>
                 </tr>
 
                 <!-- SERVICIOS -->
                 <tr class="table-secondary">
-                    <td colspan="6"><strong>Servicios</strong></td>
+                    <td colspan="5"><strong>Servicios</strong></td>
                 </tr>
                 {% for it in items if it[6] == 'SERVICIO' %}
                     {% set cantidad = it[3] %}
@@ -237,7 +233,6 @@
                     {% set subtotal = cantidad * precio * (1 - desc/100) %}
 
                     <tr>
-                        <td>Servicio</td>
                         <td>{{ it[2].upper() }}</td>
                         <td class="text-end">{{ cantidad }}</td>
                         <td class="text-end">{{ "%.2f"|format(precio) }}</td>
@@ -247,7 +242,7 @@
                 {% endfor %}
 
                 <tr>
-                    <td colspan="5" class="text-end fw-bold">Subtotal servicios</td>
+                    <td colspan="4" class="text-end fw-bold">Subtotal servicios</td>
                     <td class="text-end fw-bold">$ {{ "%.2f"|format(subtotal_servicios or 0) }}</td>
                 </tr>
 
