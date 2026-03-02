@@ -6,6 +6,8 @@ import shutil
 from functools import wraps
 from werkzeug.utils import secure_filename
 import time
+import re
+
 
 app = Flask(__name__)
 
@@ -33,6 +35,21 @@ def allowed_file(filename):
 def get_con():
     return sqlite3.connect(DB_NAME)
 
+# -----------------------------
+#  TELEFONO DE 10 DIGITOS EN CLIENTES
+# -----------------------------
+def normalizar_telefono(raw):
+    """Deja sólo dígitos en el teléfono."""
+    if not raw:
+        return None
+    solo_digitos = re.sub(r'\D', '', raw)  # saca espacios, +, -, etc.
+
+    # Opcional: si querés quedarte con los ÚLTIMOS 10 dígitos (tipo 11xxxxxxxx)
+    # if len(solo_digitos) > 10:
+    #     solo_digitos = solo_digitos[-10:]
+
+    return solo_digitos
+
 # ============================
 # Helpers de formato de texto
 # ============================
@@ -55,7 +72,6 @@ def formatear_mayus(texto: str) -> str:
     if not texto:
         return ""
     return texto.strip().upper()
-
 
 
 def init_db():
@@ -231,10 +247,32 @@ def init_db():
     )
     """)
 
+    # --- Ajustes de columnas faltantes en GASTOS (por tu gasto_form.html) ---
+    cur.execute("PRAGMA table_info(gastos)")
+    cols = [c[1] for c in cur.fetchall()]
+
+    if "medio_pago" not in cols:
+        cur.execute("ALTER TABLE gastos ADD COLUMN medio_pago TEXT")
+
+    if "notas" not in cols:
+        cur.execute("ALTER TABLE gastos ADD COLUMN notas TEXT")
+
+    # NUEVO: pagado + fecha_pago (para botón Pagado/Deshacer)
+    cur.execute("PRAGMA table_info(gastos)")
+    cols = [c[1] for c in cur.fetchall()]
+    if "pagado" not in cols:
+        cur.execute("ALTER TABLE gastos ADD COLUMN pagado INTEGER DEFAULT 0")
+        cur.execute("UPDATE gastos SET pagado = 0 WHERE pagado IS NULL")
+
+    cur.execute("PRAGMA table_info(gastos)")
+    cols = [c[1] for c in cur.fetchall()]
+    if "fecha_pago" not in cols:
+        cur.execute("ALTER TABLE gastos ADD COLUMN fecha_pago TEXT")
+
     con.commit()
     con.close()
 
-    # BACKUP
+# BACKUP
 def backup_db():
     """
     Crea una copia de seguridad de la base de datos en la carpeta 'backups'
@@ -273,7 +311,6 @@ def get_last_backup_datetime():
         return datetime.strptime(stamp, "%Y%m%d_%H%M%S")
     except Exception:
         return None
-
 
 
 # -----------------------------
@@ -428,7 +465,6 @@ def dashboard():
     )
 
 
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -493,12 +529,12 @@ def usuario_nuevo():
 
     return render_template("usuario_form.html")
 
+
 @app.route("/backup", methods=["POST"])
 @admin_required
 def backup_manual():
     backup_db()
     return redirect(url_for("dashboard"))
-
 
 
 # ----------------- CLIENTES -----------------
@@ -538,7 +574,7 @@ def cliente_nuevo():
     if request.method == "POST":
         nombre_raw = request.form["nombre"]
         apellido_raw = request.form["apellido"]
-        telefono = request.form["telefono"].strip()
+        telefono = normalizar_telefono(request.form.get('telefono'))
         email = request.form["email"].strip()
         direccion = request.form["direccion"].strip()
         notas = request.form["notas"].strip()
@@ -1149,15 +1185,28 @@ def reparacion_factura(reparacion_id):
     cur.execute("SELECT * FROM reparacion_items WHERE reparacion_id=?", (reparacion_id,))
     items = cur.fetchall()
 
-    # subtotal con descuentos por ítem
-    base_total = 0
+    # ============================
+    # Subtotales separados
+    # ============================
+    subtotal_repuestos = 0
+    subtotal_servicios = 0
+
     for it in items:
         cantidad = it[3] or 0
         precio = it[4] or 0
         descuento = 0
         if len(it) > 5 and it[5] is not None:
             descuento = it[5]
-        base_total += cantidad * precio * (1 - descuento / 100.0)
+
+        subtotal_item = cantidad * precio * (1 - descuento / 100.0)
+
+        tipo = (it[6] or "SERVICIO").strip().upper() if len(it) > 6 else "SERVICIO"
+        if tipo == "REPUESTO":
+            subtotal_repuestos += subtotal_item
+        else:
+            subtotal_servicios += subtotal_item
+
+    base_total = subtotal_repuestos + subtotal_servicios
 
     # buscar / crear registro de factura-presupuesto
     cur.execute(
@@ -1186,6 +1235,7 @@ def reparacion_factura(reparacion_id):
             descuento_global = 0.0
         if es_presupuesto is None:
             es_presupuesto = 1
+
         total_final = base_total * (1 - descuento_global / 100.0)
         cur.execute(
             "UPDATE facturas SET total=?, descuento_global=? WHERE id=?",
@@ -1218,6 +1268,8 @@ def reparacion_factura(reparacion_id):
         vehiculo=vehiculo,
         reparacion=reparacion,
         items=items,
+        subtotal_repuestos=subtotal_repuestos,
+        subtotal_servicios=subtotal_servicios,
         base_total=base_total,
         descuento_global=descuento_global,
         total=total_final,
@@ -1275,11 +1327,9 @@ def factura_confirmar(factura_id):
 @app.route("/facturas", methods=["GET"])
 @login_required
 def facturas_listado():
-    # Usamos tu helper de conexión
     con = get_con()
     cur = con.cursor()
 
-    # Filtros de fecha desde/hasta (opcionales)
     desde = request.args.get("desde") or ""
     hasta = request.args.get("hasta") or ""
 
@@ -1288,16 +1338,16 @@ def facturas_listado():
     # ============================
     sql_f = """
         SELECT 
-            f.id,            -- 0 id factura
-            f.fecha,         -- 1 fecha
-            f.total,         -- 2 total
-            c.nombre,        -- 3 nombre cliente
-            c.apellido,      -- 4 apellido cliente
-            v.patente,       -- 5 patente
-            v.marca,         -- 6 marca
-            v.modelo,        -- 7 modelo
-            r.id,            -- 8 id reparacion
-            f.es_presupuesto -- 9 flag presupuesto (0 = factura real)
+            f.id,
+            f.fecha,
+            f.total,
+            c.nombre,
+            c.apellido,
+            v.patente,
+            v.marca,
+            v.modelo,
+            r.id,
+            f.es_presupuesto
         FROM facturas f
         JOIN reparaciones r ON r.id = f.reparacion_id
         JOIN vehiculos v ON v.id = r.vehiculo_id
@@ -1324,16 +1374,15 @@ def facturas_listado():
     facturas = cur.fetchall()
 
     # ============================
-    # GASTOS
+    # GASTOS (solo para el resumen)
     # ============================
-    # Tu tabla gastos es: (id, fecha, categoria, descripcion, monto)
     sql_g = """
         SELECT 
-            id,         -- 0
-            fecha,      -- 1
-            categoria,  -- 2
-            descripcion,-- 3
-            monto       -- 4
+            id,
+            fecha,
+            categoria,
+            descripcion,
+            monto
         FROM gastos
         WHERE 1=1
     """
@@ -1356,11 +1405,8 @@ def facturas_listado():
     cur.execute(sql_g, params_g)
     gastos = cur.fetchall()
 
-    # ============================
-    # TOTALES
-    # ============================
-    total_ingresos = sum((f[2] or 0) for f in facturas)  # f[2] = total
-    total_gastos = sum((g[4] or 0) for g in gastos)      # g[4] = monto
+    total_ingresos = sum((f[2] or 0) for f in facturas)
+    total_gastos = sum((g[4] or 0) for g in gastos)
     balance_neto = total_ingresos - total_gastos
 
     con.close()
@@ -1387,7 +1433,12 @@ def gastos_listado():
     con = get_con()
     cur = con.cursor()
 
-    sql = "SELECT id, fecha, categoria, descripcion, monto FROM gastos WHERE 1=1"
+    # Traemos pagado y fecha_pago para el botón
+    sql = """
+        SELECT id, fecha, categoria, descripcion, monto, medio_pago, notas, pagado, fecha_pago
+        FROM gastos
+        WHERE 1=1
+    """
     params = []
     if desde:
         sql += " AND fecha >= ?"
@@ -1395,13 +1446,14 @@ def gastos_listado():
     if hasta:
         sql += " AND fecha <= ?"
         params.append(hasta)
+
     sql += " ORDER BY fecha DESC, id DESC"
 
     cur.execute(sql, params)
     gastos = cur.fetchall()
     con.close()
 
-    total_gastos = sum(row[4] for row in gastos) if gastos else 0
+    total_gastos = sum((row[4] or 0) for row in gastos) if gastos else 0
 
     return render_template(
         "gastos.html",
@@ -1417,22 +1469,60 @@ def gastos_listado():
 def gasto_nuevo():
     if request.method == "POST":
         fecha = request.form["fecha"]
-        categoria = request.form["categoria"].strip()
-        descripcion = request.form["descripcion"].strip()
-        monto = float(request.form["monto"] or 0)
+        categoria = (request.form.get("categoria") or "").strip()
+        descripcion = (request.form.get("descripcion") or "").strip()
+        monto = float(request.form.get("monto") or 0)
+
+        medio_pago = (request.form.get("medio_pago") or "").strip()
+        notas = (request.form.get("notas") or "").strip()
 
         con = get_con()
         cur = con.cursor()
         cur.execute("""
-            INSERT INTO gastos (fecha, categoria, descripcion, monto)
-            VALUES (?, ?, ?, ?)
-        """, (fecha, categoria, descripcion, monto))
+            INSERT INTO gastos (fecha, categoria, descripcion, monto, medio_pago, notas, pagado, fecha_pago)
+            VALUES (?, ?, ?, ?, ?, ?, 0, NULL)
+        """, (fecha, categoria, descripcion, monto, medio_pago, notas))
         con.commit()
         con.close()
 
         return redirect(url_for("gastos_listado"))
 
     return render_template("gasto_form.html")
+
+
+@app.route("/gastos/<int:gasto_id>/toggle-pagado", methods=["POST"])
+@login_required
+def gasto_toggle_pagado(gasto_id):
+    con = get_con()
+    cur = con.cursor()
+
+    cur.execute("SELECT pagado FROM gastos WHERE id=?", (gasto_id,))
+    row = cur.fetchone()
+    if not row:
+        con.close()
+        return redirect(url_for("gastos_listado"))
+
+    pagado_actual = int(row[0] or 0)
+    nuevo = 0 if pagado_actual == 1 else 1
+
+    if nuevo == 1:
+        cur.execute("""
+            UPDATE gastos
+            SET pagado = 1,
+                fecha_pago = ?
+            WHERE id = ?
+        """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), gasto_id))
+    else:
+        cur.execute("""
+            UPDATE gastos
+            SET pagado = 0,
+                fecha_pago = NULL
+            WHERE id = ?
+        """, (gasto_id,))
+
+    con.commit()
+    con.close()
+    return redirect(url_for("gastos_listado"))
 
 
 @app.route("/gastos/eliminar/<int:gasto_id>")

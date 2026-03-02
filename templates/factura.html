@@ -1,8 +1,6 @@
 {% extends "base.html" %}
 
-{# Bloque para agregar cosas al <head> de base.html #}
 {% block head_extra %}
-    {# Nombre sugerido para el archivo al guardar como PDF #}
     <meta name="filename" content="{{ (cliente[1] or '') }}_{{ (cliente[2] or '') }}_PRESUPUESTO_{{ '%06d'|format(factura_id) }}.pdf">
     <title>{{ cliente[1] }} {{ cliente[2] }} - Presupuesto {{ '%06d'|format(factura_id) }}</title>
 {% endblock %}
@@ -10,16 +8,7 @@
 {% block contenido %}
 
 <style>
-
-/* ==============================
-   LAYOUT GENERAL
-============================== */
-
-.presupuesto-wrapper {
-    background: #f4f4f4;
-    padding: 15px 0;
-}
-
+.presupuesto-wrapper { background: #f4f4f4; padding: 15px 0; }
 .presupuesto-sheet {
     position: relative;
     background: #ffffff;
@@ -31,11 +20,6 @@
     border-top: 6px solid #c1121f;
 }
 
-
-/* ==============================
-   ENCABEZADO CENTRADO
-============================== */
-
 .presupuesto-header {
     text-align: center;
     margin-bottom: 22px;
@@ -43,41 +27,11 @@
     border-bottom: 2px solid #eee;
 }
 
-.presupuesto-logo-grande {
-    height: 250px;
-}
-
-.presupuesto-titulo {
-    font-size: 1.6rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    margin-top: 6px;
-}
-
-.presupuesto-subtitulo {
-    font-size: 0.9rem;
-    color: #c1121f;
-    font-weight: 600;
-    text-transform: uppercase;
-    margin-top: -4px;
-}
-
-.presupuesto-etiqueta {
-    font-size: 0.80rem;
-    color: #666;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-}
-
-.presupuesto-numero {
-    font-size: 1rem;
-    font-weight: 700;
-}
-
-
-/* ==============================
-   BLOQUES DE INFORMACIÓN
-============================== */
+.presupuesto-logo-grande { height: 250px; }
+.presupuesto-titulo { font-size: 1.6rem; font-weight: 700; text-transform: uppercase; margin-top: 6px; }
+.presupuesto-subtitulo { font-size: 0.9rem; color: #c1121f; font-weight: 600; text-transform: uppercase; margin-top: -4px; }
+.presupuesto-etiqueta { font-size: 0.80rem; color: #666; text-transform: uppercase; letter-spacing: 0.06em; }
+.presupuesto-numero { font-size: 1rem; font-weight: 700; }
 
 .presupuesto-seccion {
     background: #fafafa;
@@ -86,18 +40,7 @@
     border-radius: 6px;
     margin-bottom: 10px;
 }
-
-.presupuesto-seccion-titulo {
-    font-weight: 800;
-    text-transform: uppercase;
-    margin-bottom: 6px;
-    font-size: 0.9rem;
-}
-
-
-/* ==============================
-   TABLA ÍTEMS
-============================== */
+.presupuesto-seccion-titulo { font-weight: 800; text-transform: uppercase; margin-bottom: 6px; font-size: 0.9rem; }
 
 .presupuesto-tabla {
     margin-top: 12px;
@@ -105,38 +48,22 @@
     border-radius: 6px;
     overflow: hidden;
 }
+.presupuesto-tabla thead { background: #111; color: white; }
 
-.presupuesto-tabla thead {
-    background: #111;
-    color: white;
-}
-
-
-/* ==============================
-   RESUMEN FINAL
-============================== */
-
-.presupuesto-resumen {
-    margin-top: 14px;
-    display: flex;
-    justify-content: flex-end;
-}
-
+.presupuesto-resumen { margin-top: 14px; display: flex; justify-content: flex-end; }
 .presupuesto-resumen-inner {
-    width: 260px;
+    width: 320px;
     background: #fff;
     padding: 10px;
     border-radius: 6px;
     border: 1px solid #ddd;
 }
-
 .presupuesto-resumen-row {
     display: flex;
     justify-content: space-between;
     font-size: 0.9rem;
     margin-bottom: 4px;
 }
-
 .presupuesto-resumen-total {
     font-size: 1rem;
     font-weight: bold;
@@ -144,30 +71,10 @@
     padding-top: 8px;
 }
 
-
-/* ==============================
-   IMPRESIÓN
-============================== */
-
 @media print {
-    /* Ocultar barra lateral, topbar y botones de acción */
-    .sidebar,
-    .topbar,
-    .no-print {
-        display: none !important;
-    }
-
-    body {
-        background: #ffffff !important;
-        margin: 0;
-        padding: 0;
-    }
-
-    .presupuesto-wrapper {
-        padding: 0;
-        margin: 0;
-    }
-
+    .sidebar, .topbar, .no-print { display: none !important; }
+    body { background: #ffffff !important; margin: 0; padding: 0; }
+    .presupuesto-wrapper { padding: 0; margin: 0; }
     .presupuesto-sheet {
         box-shadow: none;
         border-radius: 0;
@@ -175,13 +82,11 @@
         padding: 24px 28px;
     }
 }
-
 </style>
 
 <div class="presupuesto-wrapper">
     <div class="presupuesto-sheet">
 
-        <!-- BOTONES (NO IMPRIMIBLES) -->
         <div class="no-print mb-3 d-flex gap-2 flex-wrap">
             <button onclick="window.print()" class="btn btn-dark btn-sm">🖨 Imprimir</button>
 
@@ -198,7 +103,6 @@
                 </a>
             {% endif %}
 
-            <!-- BOTÓN AGREGAR AL BALANCE / ESTADO -->
             {% if es_presupuesto %}
                 <form action="{{ url_for('factura_confirmar', factura_id=factura_id) }}"
                       method="post"
@@ -219,12 +123,7 @@
             </a>
         </div>
 
-
-        <!-- ============================
-             ENCABEZADO CENTRADO
-        ============================ -->
         <div class="presupuesto-header">
-
             <img src="{{ url_for('static', filename='img/doccar_logo.png') }}"
                  class="presupuesto-logo-grande">
 
@@ -240,14 +139,8 @@
                 <span class="presupuesto-etiqueta">Fecha:</span>
                 <span>{{ factura_fecha }}</span>
             </div>
-
         </div>
 
-
-
-        <!-- ============================
-             INFORMACIÓN DEL TALLER
-        ============================ -->
         <div class="presupuesto-seccion">
             <div class="presupuesto-seccion-titulo">Taller</div>
             <div><strong>Doccar Racing</strong></div>
@@ -255,10 +148,6 @@
             <div>Teléfono: 1162927439</div>
         </div>
 
-
-        <!-- ============================
-             INFORMACIÓN DEL CLIENTE
-        ============================ -->
         <div class="presupuesto-seccion">
             <div class="presupuesto-seccion-titulo">Cliente</div>
             <div><strong>Nombre:</strong> {{ cliente[1] }} {{ cliente[2] }}</div>
@@ -276,10 +165,6 @@
             {% endif %}
         </div>
 
-
-        <!-- ============================
-             INFORMACIÓN DEL VEHÍCULO
-        ============================ -->
         <div class="presupuesto-seccion">
             <div class="presupuesto-seccion-titulo">Vehículo</div>
             <div>
@@ -300,50 +185,92 @@
             {% endif %}
         </div>
 
-
-
-        <!-- ============================
-             TABLA DE ÍTEMS
-        ============================ -->
         <div class="presupuesto-tabla">
             <table class="table table-sm mb-0">
                 <thead>
-                    <tr>
-                        <th>Concepto</th>
-                        <th class="text-end">Cant.</th>
-                        <th class="text-end">Precio unit.</th>
-                        <th class="text-end">Desc. %</th>
-                        <th class="text-end">Subtotal</th>
-                    </tr>
+                <tr>
+                    <th>Tipo</th>
+                    <th>Concepto</th>
+                    <th class="text-end">Cant.</th>
+                    <th class="text-end">Precio unit.</th>
+                    <th class="text-end">Desc. %</th>
+                    <th class="text-end">Subtotal</th>
+                </tr>
                 </thead>
                 <tbody>
-                    {% for it in items %}
-                        {% set cantidad = it[3] %}
-                        {% set precio = it[4] %}
-                        {% set desc = it[5] or 0 %}
-                        {% set subtotal = cantidad * precio * (1 - desc/100) %}
 
-                        <tr>
-                            <td>{{ it[2].upper() }}</td>
-                            <td class="text-end">{{ cantidad }}</td>
-                            <td class="text-end">{{ "%.2f"|format(precio) }}</td>
-                            <td class="text-end">{{ desc }}</td>
-                            <td class="text-end">{{ "%.2f"|format(subtotal) }}</td>
-                        </tr>
-                    {% endfor %}
+                <!-- REPUESTOS -->
+                <tr class="table-secondary">
+                    <td colspan="6"><strong>Repuestos</strong></td>
+                </tr>
+                {% set hay_repuestos = false %}
+                {% for it in items if it[6] == 'REPUESTO' %}
+                    {% set hay_repuestos = true %}
+                    {% set cantidad = it[3] %}
+                    {% set precio = it[4] %}
+                    {% set desc = it[5] or 0 %}
+                    {% set subtotal = cantidad * precio * (1 - desc/100) %}
+
+                    <tr>
+                        <td>Repuesto</td>
+                        <td>{{ it[2].upper() }}</td>
+                        <td class="text-end">{{ cantidad }}</td>
+                        <td class="text-end">{{ "%.2f"|format(precio) }}</td>
+                        <td class="text-end">{{ desc }}</td>
+                        <td class="text-end">{{ "%.2f"|format(subtotal) }}</td>
+                    </tr>
+                {% endfor %}
+
+                <tr>
+                    <td colspan="5" class="text-end fw-bold">Subtotal repuestos</td>
+                    <td class="text-end fw-bold">$ {{ "%.2f"|format(subtotal_repuestos or 0) }}</td>
+                </tr>
+
+                <!-- SERVICIOS -->
+                <tr class="table-secondary">
+                    <td colspan="6"><strong>Servicios</strong></td>
+                </tr>
+                {% for it in items if it[6] == 'SERVICIO' %}
+                    {% set cantidad = it[3] %}
+                    {% set precio = it[4] %}
+                    {% set desc = it[5] or 0 %}
+                    {% set subtotal = cantidad * precio * (1 - desc/100) %}
+
+                    <tr>
+                        <td>Servicio</td>
+                        <td>{{ it[2].upper() }}</td>
+                        <td class="text-end">{{ cantidad }}</td>
+                        <td class="text-end">{{ "%.2f"|format(precio) }}</td>
+                        <td class="text-end">{{ desc }}</td>
+                        <td class="text-end">{{ "%.2f"|format(subtotal) }}</td>
+                    </tr>
+                {% endfor %}
+
+                <tr>
+                    <td colspan="5" class="text-end fw-bold">Subtotal servicios</td>
+                    <td class="text-end fw-bold">$ {{ "%.2f"|format(subtotal_servicios or 0) }}</td>
+                </tr>
+
                 </tbody>
             </table>
         </div>
 
-
-        <!-- ============================
-             RESUMEN FINAL
-        ============================ -->
         <div class="presupuesto-resumen">
             <div class="presupuesto-resumen-inner">
+
                 <div class="presupuesto-resumen-row">
-                    <span>Subtotal:</span>
-                    <strong>$ {{ "%.2f"|format(base_total) }}</strong>
+                    <span>Subtotal repuestos:</span>
+                    <strong>$ {{ "%.2f"|format(subtotal_repuestos or 0) }}</strong>
+                </div>
+
+                <div class="presupuesto-resumen-row">
+                    <span>Subtotal servicios:</span>
+                    <strong>$ {{ "%.2f"|format(subtotal_servicios or 0) }}</strong>
+                </div>
+
+                <div class="presupuesto-resumen-row">
+                    <span>Total (sin descuento):</span>
+                    <strong>$ {{ "%.2f"|format(base_total or 0) }}</strong>
                 </div>
 
                 <div class="presupuesto-resumen-row">
@@ -353,15 +280,14 @@
 
                 <div class="presupuesto-resumen-row presupuesto-resumen-total">
                     <span>Total final:</span>
-                    <span>$ {{ "%.2f"|format(total) }}</span>
+                    <span>$ {{ "%.2f"|format(total or 0) }}</span>
                 </div>
             </div>
         </div>
 
-
         <div class="presupuesto-footer mt-3">
             <small class="text-muted">
-                * Presupuesto válido por 30 días.  
+                * Presupuesto válido por 30 días.
                 Gracias por confiar en Doccar Racing.
             </small>
         </div>
@@ -369,4 +295,17 @@
     </div>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
+    {{ super() }}
+    {% set numero_factura = "%06d"|format(factura_id) %}
+    {% set nombre_cliente = (cliente[1] ~ cliente[2])|replace(" ", "") %}
+    {% set nombre_archivo = numero_factura ~ "-" ~ nombre_cliente %}
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            document.title = "{{ nombre_archivo }}";
+        });
+    </script>
 {% endblock %}
