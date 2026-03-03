@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request, redirect, session, url_for
+# app.py (ARREGLADO)
+from flask import Flask, render_template, request, redirect, session, url_for, flash
 import sqlite3
 import os
 from datetime import date, datetime, timedelta
@@ -7,16 +8,16 @@ from functools import wraps
 from werkzeug.utils import secure_filename
 import time
 import re
+import hashlib
 
-
+# =========================
+# Config general
+# =========================
 app = Flask(__name__)
-
-# Clave para sesiones (para uso local la dejamos fija)
 app.secret_key = "clave_ultra_secreta_local"
 
 DB_NAME = "database.db"
 BACKUP_FOLDER = "backups"
-
 
 UPLOAD_FOLDER = os.path.join("static", "uploads")
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
@@ -24,61 +25,46 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB
 
+# Estados permitidos (solo estos)
+ESTADOS = ["Presupuesto", "Ingresado", "Entregado", "Facturado"]
+
+
+# =========================
+# Helpers
+# =========================
+def get_con():
+    con = sqlite3.connect(DB_NAME)
+    con.row_factory = sqlite3.Row
+    return con
+
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-# -----------------------------
-#  CONEXIÓN Y CREACIÓN DE DB
-# -----------------------------
-def get_con():
-    return sqlite3.connect(DB_NAME)
-
-# -----------------------------
-#  TELEFONO DE 10 DIGITOS EN CLIENTES
-# -----------------------------
 def normalizar_telefono(raw):
     """Deja sólo dígitos en el teléfono."""
     if not raw:
         return None
-    solo_digitos = re.sub(r'\D', '', raw)  # saca espacios, +, -, etc.
-
-    # Opcional: si querés quedarte con los ÚLTIMOS 10 dígitos (tipo 11xxxxxxxx)
-    # if len(solo_digitos) > 10:
-    #     solo_digitos = solo_digitos[-10:]
-
-    return solo_digitos
-
-# ============================
-# Helpers de formato de texto
-# ============================
-
-def formatear_titulo(texto: str) -> str:
-    """
-    Devuelve el texto con la primera letra de cada palabra en mayúscula
-    y el resto en minúscula. Ej: 'jUaN pEdRo' -> 'Juan Pedro'
-    """
-    if not texto:
-        return ""
-    partes = texto.strip().split()
-    return " ".join(p.capitalize() for p in partes)
-
-def formatear_mayus(texto: str) -> str:
-    """
-    Devuelve el texto todo en mayúsculas, sin espacios de más.
-    Ej: '  lIttEirNi ' -> 'LITTEIRNI'
-    """
-    if not texto:
-        return ""
-    return texto.strip().upper()
+    return re.sub(r"\D", "", raw)
 
 
+def file_sha256(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+# =========================
+# DB init / migraciones
+# =========================
 def init_db():
     con = get_con()
     cur = con.cursor()
 
-    # USUARIOS
+    # ---------------- USERS ----------------
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,21 +78,15 @@ def init_db():
     if "rol" not in cols:
         cur.execute("ALTER TABLE users ADD COLUMN rol TEXT")
 
-    # asegurar usuario admin con pass 1234
+    # asegurar usuario admin
     cur.execute("SELECT id FROM users WHERE username='admin'")
     row = cur.fetchone()
     if row:
-        cur.execute(
-            "UPDATE users SET password=?, rol=? WHERE id=?",
-            ("1234", "admin", row[0])
-        )
+        cur.execute("UPDATE users SET password=?, rol=? WHERE id=?", ("1234", "admin", row[0]))
     else:
-        cur.execute(
-            "INSERT INTO users (username, password, rol) VALUES (?, ?, ?)",
-            ("admin", "1234", "admin")
-        )
+        cur.execute("INSERT INTO users (username, password, rol) VALUES (?, ?, ?)", ("admin", "1234", "admin"))
 
-    # CLIENTES
+    # ---------------- CLIENTES ----------------
     cur.execute("""
     CREATE TABLE IF NOT EXISTS clientes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -122,12 +102,13 @@ def init_db():
     cols = [c[1] for c in cur.fetchall()]
     if "documento" not in cols:
         cur.execute("ALTER TABLE clientes ADD COLUMN documento TEXT")
+
     cur.execute("PRAGMA table_info(clientes)")
     cols = [c[1] for c in cur.fetchall()]
     if "razon_social" not in cols:
         cur.execute("ALTER TABLE clientes ADD COLUMN razon_social TEXT")
 
-    # VEHÍCULOS
+    # ---------------- VEHICULOS ----------------
     cur.execute("""
     CREATE TABLE IF NOT EXISTS vehiculos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -142,7 +123,7 @@ def init_db():
     )
     """)
 
-    # REPARACIONES
+    # ---------------- REPARACIONES ----------------
     cur.execute("""
     CREATE TABLE IF NOT EXISTS reparaciones (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -158,9 +139,30 @@ def init_db():
     cols = [c[1] for c in cur.fetchall()]
     if "estado" not in cols:
         cur.execute("ALTER TABLE reparaciones ADD COLUMN estado TEXT")
-        cur.execute("UPDATE reparaciones SET estado = 'Ingresado' WHERE estado IS NULL")
 
-    # ÍTEMS
+    # default y limpieza de estados viejos
+    cur.execute("UPDATE reparaciones SET estado='Presupuesto' WHERE estado IS NULL OR TRIM(estado)=''")
+
+    # normalizar variantes viejas
+    cur.execute("""
+        UPDATE reparaciones
+        SET estado='Facturado'
+        WHERE estado IN ('Facturada','FACTURADA')
+    """)
+    cur.execute("""
+        UPDATE reparaciones
+        SET estado='Entregado'
+        WHERE estado IN ('Terminado','TERMINADO','Entregada','ENTREGADA')
+    """)
+
+    # cualquier estado viejo no permitido -> Presupuesto
+    cur.execute("""
+        UPDATE reparaciones
+        SET estado='Presupuesto'
+        WHERE estado NOT IN ('Presupuesto','Ingresado','Entregado','Facturado')
+    """)
+
+    # ---------------- ITEMS ----------------
     cur.execute("""
     CREATE TABLE IF NOT EXISTS reparacion_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -168,6 +170,8 @@ def init_db():
         concepto TEXT,
         cantidad REAL,
         precio_unitario REAL,
+        descuento REAL,
+        tipo TEXT DEFAULT 'SERVICIO',
         FOREIGN KEY(reparacion_id) REFERENCES reparaciones(id)
     )
     """)
@@ -175,14 +179,12 @@ def init_db():
     cols = [c[1] for c in cur.fetchall()]
     if "descuento" not in cols:
         cur.execute("ALTER TABLE reparacion_items ADD COLUMN descuento REAL")
-
-    # NUEVO: tipo de ítem (SERVICIO / REPUESTO)
     cur.execute("PRAGMA table_info(reparacion_items)")
     cols = [c[1] for c in cur.fetchall()]
     if "tipo" not in cols:
         cur.execute("ALTER TABLE reparacion_items ADD COLUMN tipo TEXT DEFAULT 'SERVICIO'")
 
-    # CONCEPTOS GUARDADOS PARA SUGERENCIAS DE ÍTEMS
+    # ---------------- CONCEPTOS ----------------
     cur.execute("""
     CREATE TABLE IF NOT EXISTS item_conceptos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -190,7 +192,7 @@ def init_db():
     )
     """)
 
-    # IMÁGENES DE REPARACIONES
+    # ---------------- IMAGENES ----------------
     cur.execute("""
     CREATE TABLE IF NOT EXISTS reparacion_imagenes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -201,30 +203,40 @@ def init_db():
     )
     """)
 
-    # FACTURAS / PRESUPUESTOS
+    # ---------------- FACTURAS ----------------
     cur.execute("""
     CREATE TABLE IF NOT EXISTS facturas (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         reparacion_id INTEGER,
         fecha TEXT,
         total REAL,
+        descuento_global REAL,
+        es_presupuesto INTEGER DEFAULT 1,
+        total_servicios REAL,
+        total_repuestos REAL,
         FOREIGN KEY(reparacion_id) REFERENCES reparaciones(id)
     )
     """)
+
     cur.execute("PRAGMA table_info(facturas)")
     cols = [c[1] for c in cur.fetchall()]
     if "descuento_global" not in cols:
         cur.execute("ALTER TABLE facturas ADD COLUMN descuento_global REAL")
-
-    # NUEVO: flag para saber si es presupuesto (1) o ya está en balance (0)
     cur.execute("PRAGMA table_info(facturas)")
     cols = [c[1] for c in cur.fetchall()]
     if "es_presupuesto" not in cols:
         cur.execute("ALTER TABLE facturas ADD COLUMN es_presupuesto INTEGER DEFAULT 1")
-        # Lo viejo lo consideramos facturado (por si tenías datos históricos)
-        cur.execute("UPDATE facturas SET es_presupuesto = 0 WHERE es_presupuesto IS NULL")
+        cur.execute("UPDATE facturas SET es_presupuesto = 1 WHERE es_presupuesto IS NULL")
+    cur.execute("PRAGMA table_info(facturas)")
+    cols = [c[1] for c in cur.fetchall()]
+    if "total_servicios" not in cols:
+        cur.execute("ALTER TABLE facturas ADD COLUMN total_servicios REAL")
+    cur.execute("PRAGMA table_info(facturas)")
+    cols = [c[1] for c in cur.fetchall()]
+    if "total_repuestos" not in cols:
+        cur.execute("ALTER TABLE facturas ADD COLUMN total_repuestos REAL")
 
-    # CITAS
+    # ---------------- CITAS ----------------
     cur.execute("""
     CREATE TABLE IF NOT EXISTS citas (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -236,91 +248,87 @@ def init_db():
     )
     """)
 
-    # GASTOS
+    # ---------------- GASTOS ----------------
     cur.execute("""
     CREATE TABLE IF NOT EXISTS gastos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         fecha TEXT,
         categoria TEXT,
         descripcion TEXT,
-        monto REAL
+        monto REAL,
+        pagador TEXT,
+        medio_pago TEXT,
+        notas TEXT,
+        pagado INTEGER DEFAULT 0,
+        fecha_pago TEXT,
+        reparacion_id INTEGER
     )
     """)
 
-    # --- Ajustes de columnas faltantes en GASTOS (por tu gasto_form.html) ---
     cur.execute("PRAGMA table_info(gastos)")
     cols = [c[1] for c in cur.fetchall()]
-
+    if "pagador" not in cols:
+        cur.execute("ALTER TABLE gastos ADD COLUMN pagador TEXT")
     if "medio_pago" not in cols:
         cur.execute("ALTER TABLE gastos ADD COLUMN medio_pago TEXT")
-
     if "notas" not in cols:
         cur.execute("ALTER TABLE gastos ADD COLUMN notas TEXT")
-
-    # NUEVO: pagado + fecha_pago (para botón Pagado/Deshacer)
-    cur.execute("PRAGMA table_info(gastos)")
-    cols = [c[1] for c in cur.fetchall()]
     if "pagado" not in cols:
         cur.execute("ALTER TABLE gastos ADD COLUMN pagado INTEGER DEFAULT 0")
-        cur.execute("UPDATE gastos SET pagado = 0 WHERE pagado IS NULL")
-
-    cur.execute("PRAGMA table_info(gastos)")
-    cols = [c[1] for c in cur.fetchall()]
     if "fecha_pago" not in cols:
         cur.execute("ALTER TABLE gastos ADD COLUMN fecha_pago TEXT")
+    if "reparacion_id" not in cols:
+        cur.execute("ALTER TABLE gastos ADD COLUMN reparacion_id INTEGER")
+
+    cur.execute("UPDATE gastos SET pagado = 0 WHERE pagado IS NULL")
 
     con.commit()
     con.close()
 
-# BACKUP
-def backup_db():
+
+# =========================
+# Backups (1 solo, sobreescribe)
+# =========================
+def backup_db_if_changed():
     """
-    Crea una copia de seguridad de la base de datos en la carpeta 'backups'
-    con nombre backup_YYYYMMDD_HHMMSS.db
+    Genera 1 solo backup: backups/backup_latest.db
+    Sólo lo actualiza si el DB cambió (hash distinto).
     """
     if not os.path.exists(BACKUP_FOLDER):
         os.makedirs(BACKUP_FOLDER, exist_ok=True)
 
-    if os.path.exists(DB_NAME):
-        ahora = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_name = f"backup_{ahora}.db"
-        backup_path = os.path.join(BACKUP_FOLDER, backup_name)
-        shutil.copy2(DB_NAME, backup_path)
-        return backup_path
+    if not os.path.exists(DB_NAME):
+        return None
+
+    dst = os.path.join(BACKUP_FOLDER, "backup_latest.db")
+    src_hash = file_sha256(DB_NAME)
+    dst_hash = file_sha256(dst) if os.path.exists(dst) else None
+
+    if src_hash != dst_hash:
+        shutil.copy2(DB_NAME, dst)
+        return dst
+
     return None
 
 
 def get_last_backup_datetime():
-    """
-    Devuelve un datetime del último backup, o None si no hay.
-    """
-    if not os.path.exists(BACKUP_FOLDER):
+    path = os.path.join(BACKUP_FOLDER, "backup_latest.db")
+    if not os.path.exists(path):
         return None
-
-    archivos = [
-        f for f in os.listdir(BACKUP_FOLDER)
-        if f.startswith("backup_") and f.endswith(".db")
-    ]
-    if not archivos:
-        return None
-
-    ultimo = max(archivos)  # por orden alfabético ya queda el más nuevo
-    # formato backup_YYYYMMDD_HHMMSS.db
     try:
-        stamp = ultimo[len("backup_"):-len(".db")]
-        return datetime.strptime(stamp, "%Y%m%d_%H%M%S")
+        return datetime.fromtimestamp(os.path.getmtime(path))
     except Exception:
         return None
 
 
-# -----------------------------
-#  DECORADORES DE SEGURIDAD
-# -----------------------------
+# =========================
+# Decoradores auth
+# =========================
 def login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if "user_id" not in session:
-            return redirect(url_for('login'))
+            return redirect(url_for("login"))
         return f(*args, **kwargs)
     return wrapper
 
@@ -329,123 +337,151 @@ def admin_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if "user_id" not in session or session.get("rol") != "admin":
-            return redirect(url_for('dashboard'))
+            return redirect(url_for("dashboard"))
         return f(*args, **kwargs)
     return wrapper
 
 
-# ----------------- RUTAS PRINCIPALES -----------------
+# =========================
+# Dashboard
+# =========================
 @app.route("/")
 @login_required
 def dashboard():
     con = get_con()
     cur = con.cursor()
 
-    # --- Reparaciones en proceso (para la tabla como ya tenías) ---
+    hoy = date.today().isoformat()
+    desde_7 = (date.today() - timedelta(days=6)).isoformat()
+
+    # Reparaciones visibles en dashboard (NO Presupuesto, NO Facturado)
     cur.execute("""
         SELECT 
-            r.id,
-            r.fecha,
-            r.estado,
-            r.descripcion,
-            v.patente,
-            v.marca,
-            v.modelo,
-            c.nombre,
-            c.apellido
+            r.id, r.fecha, r.estado, r.descripcion,
+            v.patente, v.marca, v.modelo,
+            c.nombre, c.apellido
         FROM reparaciones r
         JOIN vehiculos v ON v.id = r.vehiculo_id
         JOIN clientes c ON c.id = v.cliente_id
-        WHERE r.estado = 'En proceso'
-        ORDER BY r.fecha DESC, r.id DESC
+        WHERE r.estado IN ('Ingresado','Entregado')
+        ORDER BY 
+            CASE r.estado
+                WHEN 'Ingresado' THEN 1
+                WHEN 'Entregado' THEN 2
+                ELSE 9
+            END,
+            r.fecha DESC, r.id DESC
     """)
     trabajos = cur.fetchall()
 
-    # --- Próximas citas (desde hoy en adelante) ---
-    hoy = date.today()
-    hoy_str = hoy.isoformat()
+    # Próximas citas
     cur.execute("""
         SELECT id, fecha, hora, cliente_nombre, telefono, descripcion
         FROM citas
         WHERE fecha >= ?
         ORDER BY fecha, hora
         LIMIT 10
-    """, (hoy_str,))
+    """, (hoy,))
     citas = cur.fetchall()
 
-    # --- Métricas rápidas para tarjetas ---
-    # Reparaciones en proceso
-    cur.execute("SELECT COUNT(*) FROM reparaciones WHERE estado = 'En proceso'")
+    # Gastos pendientes (pagado=0)
+    cur.execute("""
+        SELECT id, fecha, categoria, descripcion, monto, pagador
+        FROM gastos
+        WHERE COALESCE(pagado,0)=0
+        ORDER BY fecha DESC, id DESC
+        LIMIT 15
+    """)
+    gastos_pendientes = cur.fetchall()
+
+    cur.execute("""
+        SELECT COALESCE(SUM(monto),0)
+        FROM gastos
+        WHERE COALESCE(pagado,0)=0
+    """)
+    total_gastos_pendientes = (cur.fetchone()[0] or 0)
+
+    # Métricas simples
+    cur.execute("SELECT COUNT(*) FROM reparaciones WHERE estado='Ingresado'")
     reparaciones_en_proceso = cur.fetchone()[0] or 0
 
-    # Reparaciones pendientes (no terminadas / entregadas / facturadas)
-    cur.execute("""
-        SELECT COUNT(*) 
-        FROM reparaciones 
-        WHERE estado IN ('Ingresado', 'En proceso', 'Esperando repuesto')
-    """)
+    cur.execute("SELECT COUNT(*) FROM reparaciones WHERE estado IN ('Ingresado','Entregado')")
     reparaciones_pendientes = cur.fetchone()[0] or 0
 
-    # Reparaciones con fecha de hoy
-    cur.execute("SELECT COUNT(*) FROM reparaciones WHERE fecha = ?", (hoy_str,))
+    cur.execute("SELECT COUNT(*) FROM reparaciones WHERE fecha=? AND estado='Ingresado'", (hoy,))
     reparaciones_hoy = cur.fetchone()[0] or 0
 
-    # --- Ingresos y gastos últimos 7 días (para tarjetas y gráfico) ---
-    desde_7 = (hoy - timedelta(days=6)).isoformat()
-    hasta_7 = hoy_str
-
-    # Total ingresos (facturas NO presupuesto)
+    # Ingresos últimos 7 días (solo facturas reales, no presupuestos) -> servicios
     cur.execute("""
-        SELECT COALESCE(SUM(total), 0)
+        SELECT COALESCE(SUM(COALESCE(total_servicios,total)),0)
         FROM facturas
-        WHERE (es_presupuesto IS NULL OR es_presupuesto = 0)
+        WHERE COALESCE(es_presupuesto,1)=0
           AND fecha BETWEEN ? AND ?
-    """, (desde_7, hasta_7))
+    """, (desde_7, hoy))
     total_ingresos_7 = cur.fetchone()[0] or 0
 
-    # Total gastos
+    # Gastos últimos 7 días
     cur.execute("""
-        SELECT COALESCE(SUM(monto), 0)
+        SELECT COALESCE(SUM(monto),0)
         FROM gastos
         WHERE fecha BETWEEN ? AND ?
-    """, (desde_7, hasta_7))
+    """, (desde_7, hoy))
     total_gastos_7 = cur.fetchone()[0] or 0
 
     balance_7 = total_ingresos_7 - total_gastos_7
 
-    # --- Datos día a día para el gráfico (últimos 7 días) ---
+    # Serie diaria (7 días) para el chart
     labels = []
     ingresos_por_dia = []
     gastos_por_dia = []
+    for i in range(7):
+        d = (date.today() - timedelta(days=(6 - i))).isoformat()
+        labels.append(d)
 
-    for i in range(6, -1, -1):
-        dia = hoy - timedelta(days=i)
-        dia_str = dia.isoformat()
-        labels.append(dia_str)
-
-        # ingresos
         cur.execute("""
-            SELECT COALESCE(SUM(total), 0)
+            SELECT COALESCE(SUM(COALESCE(total_servicios,total)),0)
             FROM facturas
-            WHERE (es_presupuesto IS NULL OR es_presupuesto = 0)
-              AND fecha = ?
-        """, (dia_str,))
-        ingresos_dia = cur.fetchone()[0] or 0
+            WHERE COALESCE(es_presupuesto,1)=0 AND fecha = ?
+        """, (d,))
+        ingresos_por_dia.append(float(cur.fetchone()[0] or 0))
 
-        # gastos
         cur.execute("""
-            SELECT COALESCE(SUM(monto), 0)
+            SELECT COALESCE(SUM(monto),0)
             FROM gastos
             WHERE fecha = ?
-        """, (dia_str,))
-        gastos_dia = cur.fetchone()[0] or 0
+        """, (d,))
+        gastos_por_dia.append(float(cur.fetchone()[0] or 0))
 
-        ingresos_por_dia.append(ingresos_dia)
-        gastos_por_dia.append(gastos_dia)
+    # Pendientes de cobro (lo que se ve en dashboard) - SOLO ULTIMA FACTURA (FIX)
+    cur.execute("""
+        SELECT
+            r.id, r.fecha,
+            c.nombre, c.apellido,
+            v.patente, v.marca, v.modelo,
+            r.descripcion,
+            r.estado,
+            f.id as factura_id,
+            f.total as factura_total,
+            f.es_presupuesto
+        FROM reparaciones r
+        JOIN vehiculos v ON v.id = r.vehiculo_id
+        JOIN clientes c ON c.id = v.cliente_id
+        LEFT JOIN facturas f
+          ON f.id = (
+              SELECT id
+              FROM facturas
+              WHERE reparacion_id = r.id
+              ORDER BY id DESC
+              LIMIT 1
+          )
+        WHERE r.estado IN ('Ingresado','Entregado')
+        ORDER BY r.fecha DESC, r.id DESC
+        LIMIT 20
+    """)
+    pendientes_cobro = cur.fetchall()
 
     con.close()
 
-    # --- Último backup ---
     last_backup_dt = get_last_backup_datetime()
 
     return render_template(
@@ -458,13 +494,19 @@ def dashboard():
         total_ingresos_7=total_ingresos_7,
         total_gastos_7=total_gastos_7,
         balance_7=balance_7,
+        gastos_pendientes=gastos_pendientes,
+        total_gastos_pendientes=total_gastos_pendientes,
+        last_backup_dt=last_backup_dt,
+        pendientes_cobro=pendientes_cobro,
         labels=labels,
         ingresos_por_dia=ingresos_por_dia,
         gastos_por_dia=gastos_por_dia,
-        last_backup_dt=last_backup_dt
     )
 
 
+# =========================
+# Auth
+# =========================
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -473,10 +515,7 @@ def login():
 
         con = get_con()
         cur = con.cursor()
-        cur.execute(
-            "SELECT id, rol FROM users WHERE username=? AND password=?",
-            (user, password)
-        )
+        cur.execute("SELECT id, rol FROM users WHERE username=? AND password=?", (user, password))
         data = cur.fetchone()
         con.close()
 
@@ -485,8 +524,8 @@ def login():
             session["username"] = user
             session["rol"] = data[1] or "operador"
             return redirect(url_for("dashboard"))
-        else:
-            return render_template("login.html", error="Credenciales incorrectas")
+
+        return render_template("login.html", error="Credenciales incorrectas")
 
     return render_template("login.html")
 
@@ -497,7 +536,9 @@ def logout():
     return redirect(url_for("login"))
 
 
-# ----------------- USUARIOS (ADMIN) -----------------
+# =========================
+# Usuarios (admin)
+# =========================
 @app.route("/usuarios")
 @admin_required
 def usuarios():
@@ -519,10 +560,7 @@ def usuario_nuevo():
 
         con = get_con()
         cur = con.cursor()
-        cur.execute(
-            "INSERT INTO users (username, password, rol) VALUES (?, ?, ?)",
-            (username, password, rol)
-        )
+        cur.execute("INSERT INTO users (username, password, rol) VALUES (?, ?, ?)", (username, password, rol))
         con.commit()
         con.close()
         return redirect(url_for("usuarios"))
@@ -533,11 +571,13 @@ def usuario_nuevo():
 @app.route("/backup", methods=["POST"])
 @admin_required
 def backup_manual():
-    backup_db()
+    backup_db_if_changed()
     return redirect(url_for("dashboard"))
 
 
-# ----------------- CLIENTES -----------------
+# =========================
+# Clientes
+# =========================
 @app.route("/clientes")
 @login_required
 def clientes():
@@ -554,9 +594,7 @@ def clientes():
                OR apellido LIKE ?
                OR telefono LIKE ?
                OR email LIKE ?
-               OR id IN (
-                    SELECT cliente_id FROM vehiculos WHERE patente LIKE ?
-               )
+               OR id IN (SELECT cliente_id FROM vehiculos WHERE patente LIKE ?)
             ORDER BY apellido, nombre
         """, (patron, patron, patron, patron, patron))
     else:
@@ -574,10 +612,10 @@ def cliente_nuevo():
     if request.method == "POST":
         nombre_raw = request.form["nombre"]
         apellido_raw = request.form["apellido"]
-        telefono = normalizar_telefono(request.form.get('telefono'))
-        email = request.form["email"].strip()
-        direccion = request.form["direccion"].strip()
-        notas = request.form["notas"].strip()
+        telefono = normalizar_telefono(request.form.get("telefono"))
+        email = request.form.get("email", "").strip()
+        direccion = request.form.get("direccion", "").strip()
+        notas = request.form.get("notas", "").strip()
         documento = request.form.get("documento", "").strip()
         razon_social = request.form.get("razon_social", "").strip()
 
@@ -587,12 +625,13 @@ def cliente_nuevo():
         con = get_con()
         cur = con.cursor()
         cur.execute("""
-        INSERT INTO clientes (nombre, apellido, telefono, email, direccion, notas, documento, razon_social)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO clientes (nombre, apellido, telefono, email, direccion, notas, documento, razon_social)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (nombre, apellido, telefono, email, direccion, notas, documento, razon_social))
         con.commit()
         con.close()
 
+        backup_db_if_changed()
         return redirect(url_for("clientes"))
 
     return render_template("cliente_form.html")
@@ -607,10 +646,10 @@ def cliente_editar(id):
     if request.method == "POST":
         nombre_raw = request.form["nombre"]
         apellido_raw = request.form["apellido"]
-        telefono = request.form["telefono"].strip()
-        email = request.form["email"].strip()
-        direccion = request.form["direccion"].strip()
-        notas = request.form["notas"].strip()
+        telefono = normalizar_telefono(request.form.get("telefono"))
+        email = request.form.get("email", "").strip()
+        direccion = request.form.get("direccion", "").strip()
+        notas = request.form.get("notas", "").strip()
         documento = request.form.get("documento", "").strip()
         razon_social = request.form.get("razon_social", "").strip()
 
@@ -618,13 +657,15 @@ def cliente_editar(id):
         apellido = apellido_raw.strip().title()
 
         cur.execute("""
-        UPDATE clientes
-        SET nombre=?, apellido=?, telefono=?, email=?, direccion=?, notas=?, documento=?, razon_social=?
-        WHERE id=?
+            UPDATE clientes
+            SET nombre=?, apellido=?, telefono=?, email=?, direccion=?, notas=?, documento=?, razon_social=?
+            WHERE id=?
         """, (nombre, apellido, telefono, email, direccion, notas, documento, razon_social, id))
 
         con.commit()
         con.close()
+
+        backup_db_if_changed()
         return redirect(url_for("clientes"))
 
     cur.execute("SELECT * FROM clientes WHERE id=?", (id,))
@@ -642,10 +683,14 @@ def cliente_eliminar(id):
     cur.execute("DELETE FROM clientes WHERE id=?", (id,))
     con.commit()
     con.close()
+
+    backup_db_if_changed()
     return redirect(url_for("clientes"))
 
 
-# ----------------- VEHÍCULOS -----------------
+# =========================
+# Vehiculos
+# =========================
 @app.route("/clientes/<int:cliente_id>/vehiculos")
 @login_required
 def vehiculos_cliente(cliente_id):
@@ -659,7 +704,6 @@ def vehiculos_cliente(cliente_id):
     vehiculos = cur.fetchall()
 
     con.close()
-
     return render_template("vehiculos.html", cliente=cliente, vehiculos=vehiculos)
 
 
@@ -673,22 +717,23 @@ def vehiculo_nuevo(cliente_id):
     con.close()
 
     if request.method == "POST":
-        patente = request.form["patente"].strip().upper()
-        marca = request.form["marca"]
-        modelo = request.form["modelo"]
-        anio = request.form["anio"]
-        km = request.form["km"]
-        notas = request.form["notas"]
+        patente = request.form.get("patente", "").strip().upper()
+        marca = request.form.get("marca", "").strip()
+        modelo = request.form.get("modelo", "").strip()
+        anio = request.form.get("anio", "").strip()
+        km = request.form.get("km", "").strip()
+        notas = request.form.get("notas", "").strip()
 
         con = get_con()
         cur = con.cursor()
         cur.execute("""
-        INSERT INTO vehiculos (cliente_id, patente, marca, modelo, anio, km, notas)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO vehiculos (cliente_id, patente, marca, modelo, anio, km, notas)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (cliente_id, patente, marca, modelo, anio, km, notas))
         con.commit()
         con.close()
 
+        backup_db_if_changed()
         return redirect(url_for("vehiculos_cliente", cliente_id=cliente_id))
 
     return render_template("vehiculo_form.html", cliente=cliente)
@@ -706,26 +751,28 @@ def vehiculo_editar(id):
         con.close()
         return redirect(url_for("clientes"))
 
-    cliente_id = vehiculo[1]
+    cliente_id = vehiculo["cliente_id"]
     cur.execute("SELECT * FROM clientes WHERE id=?", (cliente_id,))
     cliente = cur.fetchone()
 
     if request.method == "POST":
-        patente = request.form["patente"].strip().upper()
-        marca = request.form["marca"]
-        modelo = request.form["modelo"]
-        anio = request.form["anio"]
-        km = request.form["km"]
-        notas = request.form["notas"]
+        patente = request.form.get("patente", "").strip().upper()
+        marca = request.form.get("marca", "").strip()
+        modelo = request.form.get("modelo", "").strip()
+        anio = request.form.get("anio", "").strip()
+        km = request.form.get("km", "").strip()
+        notas = request.form.get("notas", "").strip()
 
         cur.execute("""
-        UPDATE vehiculos
-        SET patente=?, marca=?, modelo=?, anio=?, km=?, notas=?
-        WHERE id=?
+            UPDATE vehiculos
+            SET patente=?, marca=?, modelo=?, anio=?, km=?, notas=?
+            WHERE id=?
         """, (patente, marca, modelo, anio, km, notas, id))
 
         con.commit()
         con.close()
+
+        backup_db_if_changed()
         return redirect(url_for("vehiculos_cliente", cliente_id=cliente_id))
 
     con.close()
@@ -745,13 +792,17 @@ def vehiculo_eliminar(id):
         cur.execute("DELETE FROM vehiculos WHERE id=?", (id,))
         con.commit()
         con.close()
+
+        backup_db_if_changed()
         return redirect(url_for("vehiculos_cliente", cliente_id=cliente_id))
 
     con.close()
     return redirect(url_for("clientes"))
 
 
-# ----------------- REPARACIONES -----------------
+# =========================
+# Reparaciones
+# =========================
 @app.route("/vehiculos/<int:vehiculo_id>/reparaciones")
 @login_required
 def reparaciones_vehiculo(vehiculo_id):
@@ -763,12 +814,11 @@ def reparaciones_vehiculo(vehiculo_id):
 
     cur.execute("SELECT * FROM vehiculos WHERE id=?", (vehiculo_id,))
     vehiculo = cur.fetchone()
-
     if not vehiculo:
         con.close()
         return redirect(url_for("clientes"))
 
-    cliente_id = vehiculo[1]
+    cliente_id = vehiculo["cliente_id"]
     cur.execute("SELECT * FROM clientes WHERE id=?", (cliente_id,))
     cliente = cur.fetchone()
 
@@ -780,11 +830,10 @@ def reparaciones_vehiculo(vehiculo_id):
     if hasta:
         sql += " AND fecha <= ?"
         params.append(hasta)
-    sql += " ORDER BY fecha DESC"
+    sql += " ORDER BY fecha DESC, id DESC"
 
     cur.execute(sql, params)
     reparaciones = cur.fetchall()
-
     con.close()
 
     return render_template(
@@ -804,33 +853,37 @@ def reparacion_nueva(vehiculo_id):
     cur = con.cursor()
     cur.execute("SELECT * FROM vehiculos WHERE id=?", (vehiculo_id,))
     vehiculo = cur.fetchone()
-
     if not vehiculo:
         con.close()
         return redirect(url_for("clientes"))
 
-    cliente_id = vehiculo[1]
+    cliente_id = vehiculo["cliente_id"]
     cur.execute("SELECT * FROM clientes WHERE id=?", (cliente_id,))
     cliente = cur.fetchone()
 
     if request.method == "POST":
-        fecha = request.form["fecha"]
-        descripcion = request.form["descripcion"]
-        notas = request.form["notas"]
-        estado = request.form.get("estado") or "Ingresado"
+        fecha = request.form.get("fecha", "")
+        descripcion = request.form.get("descripcion", "").strip()
+        notas = request.form.get("notas", "").strip()
+
+        estado = (request.form.get("estado") or "Presupuesto").strip()
+        if estado not in ESTADOS:
+            estado = "Presupuesto"
 
         cur.execute("""
-        INSERT INTO reparaciones (vehiculo_id, fecha, descripcion, notas, estado)
-        VALUES (?, ?, ?, ?, ?)
+            INSERT INTO reparaciones (vehiculo_id, fecha, descripcion, notas, estado)
+            VALUES (?, ?, ?, ?, ?)
         """, (vehiculo_id, fecha, descripcion, notas, estado))
         con.commit()
 
         reparacion_id = cur.lastrowid
         con.close()
+
+        backup_db_if_changed()
         return redirect(url_for("reparacion_detalle", reparacion_id=reparacion_id))
 
     con.close()
-    return render_template("reparacion_form.html", cliente=cliente, vehiculo=vehiculo)
+    return render_template("reparacion_form.html", cliente=cliente, vehiculo=vehiculo, estados=ESTADOS)
 
 
 @app.route("/reparaciones/editar/<int:reparacion_id>", methods=["GET", "POST"])
@@ -841,36 +894,39 @@ def reparacion_editar(reparacion_id):
 
     cur.execute("SELECT * FROM reparaciones WHERE id=?", (reparacion_id,))
     reparacion = cur.fetchone()
-
     if not reparacion:
         con.close()
         return redirect(url_for("clientes"))
 
-    vehiculo_id = reparacion[1]
+    vehiculo_id = reparacion["vehiculo_id"]
     cur.execute("SELECT * FROM vehiculos WHERE id=?", (vehiculo_id,))
     vehiculo = cur.fetchone()
-    cliente_id = vehiculo[1]
+    cliente_id = vehiculo["cliente_id"]
     cur.execute("SELECT * FROM clientes WHERE id=?", (cliente_id,))
     cliente = cur.fetchone()
 
     if request.method == "POST":
-        fecha = request.form["fecha"]
-        descripcion = request.form["descripcion"]
-        notas = request.form["notas"]
-        estado = request.form.get("estado") or "Ingresado"
+        fecha = request.form.get("fecha", "")
+        descripcion = request.form.get("descripcion", "").strip()
+        notas = request.form.get("notas", "").strip()
+        estado = (request.form.get("estado") or reparacion["estado"] or "Presupuesto").strip()
+        if estado not in ESTADOS:
+            estado = "Presupuesto"
 
         cur.execute("""
-        UPDATE reparaciones
-        SET fecha=?, descripcion=?, notas=?, estado=?
-        WHERE id=?
+            UPDATE reparaciones
+            SET fecha=?, descripcion=?, notas=?, estado=?
+            WHERE id=?
         """, (fecha, descripcion, notas, estado, reparacion_id))
 
         con.commit()
         con.close()
+
+        backup_db_if_changed()
         return redirect(url_for("reparacion_detalle", reparacion_id=reparacion_id))
 
     con.close()
-    return render_template("reparacion_form.html", cliente=cliente, vehiculo=vehiculo, reparacion=reparacion)
+    return render_template("reparacion_form.html", cliente=cliente, vehiculo=vehiculo, reparacion=reparacion, estados=ESTADOS)
 
 
 @app.route("/reparaciones/eliminar/<int:reparacion_id>")
@@ -881,7 +937,6 @@ def reparacion_eliminar(reparacion_id):
 
     cur.execute("SELECT vehiculo_id FROM reparaciones WHERE id=?", (reparacion_id,))
     row = cur.fetchone()
-
     if not row:
         con.close()
         return redirect(url_for("clientes"))
@@ -889,11 +944,14 @@ def reparacion_eliminar(reparacion_id):
     vehiculo_id = row[0]
 
     cur.execute("DELETE FROM reparacion_items WHERE reparacion_id=?", (reparacion_id,))
+    cur.execute("DELETE FROM reparacion_imagenes WHERE reparacion_id=?", (reparacion_id,))
+    cur.execute("DELETE FROM facturas WHERE reparacion_id=?", (reparacion_id,))
+    cur.execute("DELETE FROM gastos WHERE reparacion_id=?", (reparacion_id,))
     cur.execute("DELETE FROM reparaciones WHERE id=?", (reparacion_id,))
-
     con.commit()
     con.close()
 
+    backup_db_if_changed()
     return redirect(url_for("reparaciones_vehiculo", vehiculo_id=vehiculo_id))
 
 
@@ -909,17 +967,16 @@ def reparacion_detalle(reparacion_id):
         con.close()
         return redirect(url_for("clientes"))
 
-    vehiculo_id = reparacion[1]
+    vehiculo_id = reparacion["vehiculo_id"]
     cur.execute("SELECT * FROM vehiculos WHERE id=?", (vehiculo_id,))
     vehiculo = cur.fetchone()
-    cliente_id = vehiculo[1]
+    cliente_id = vehiculo["cliente_id"]
     cur.execute("SELECT * FROM clientes WHERE id=?", (cliente_id,))
     cliente = cur.fetchone()
 
-    cur.execute("SELECT * FROM reparacion_items WHERE reparacion_id=?", (reparacion_id,))
+    cur.execute("SELECT * FROM reparacion_items WHERE reparacion_id=? ORDER BY id ASC", (reparacion_id,))
     items = cur.fetchall()
 
-    # Imágenes asociadas
     cur.execute("""
         SELECT id, filename, descripcion
         FROM reparacion_imagenes
@@ -930,11 +987,9 @@ def reparacion_detalle(reparacion_id):
 
     total = 0
     for it in items:
-        cantidad = it[3] or 0
-        precio = it[4] or 0
-        descuento = 0
-        if len(it) > 5 and it[5] is not None:
-            descuento = it[5]
+        cantidad = it["cantidad"] or 0
+        precio = it["precio_unitario"] or 0
+        descuento = it["descuento"] or 0
         subtotal = cantidad * precio * (1 - descuento / 100.0)
         total += subtotal
 
@@ -951,27 +1006,128 @@ def reparacion_detalle(reparacion_id):
     )
 
 
-@app.route("/reparaciones/<int:reparacion_id>/estado", methods=["POST"])
+@app.route("/dashboard/gasto_rapido", methods=["POST"])
 @login_required
-def reparacion_cambiar_estado(reparacion_id):
-    nuevo_estado = request.form.get("estado", "").strip()
-    if not nuevo_estado:
+def gasto_rapido():
+    fecha = date.today().isoformat()
+    categoria = request.form.get("categoria", "").strip()
+    descripcion = request.form.get("descripcion", "").strip()
+    monto = float(request.form.get("monto") or 0)
+
+    if not categoria or monto <= 0:
+        flash("Completá categoría y monto válido.", "warning")
         return redirect(url_for("dashboard"))
 
     con = get_con()
     cur = con.cursor()
-    cur.execute(
-        "UPDATE reparaciones SET estado=? WHERE id=?",
-        (nuevo_estado, reparacion_id)
-    )
+    cur.execute("""
+        INSERT INTO gastos (fecha, categoria, descripcion, monto)
+        VALUES (?, ?, ?, ?)
+    """, (fecha, categoria, descripcion, monto))
     con.commit()
     con.close()
 
-    # volvemos al detalle de la reparación
-    return redirect(url_for("reparacion_detalle", reparacion_id=reparacion_id))
+    flash("Gasto guardado.", "success")
+    return redirect(url_for("dashboard"))
 
 
-# ----------------- ÍTEMS DE REPARACIÓN -----------------
+@app.route("/reparaciones/<int:reparacion_id>/estado", methods=["POST"])
+@login_required
+def reparacion_cambiar_estado(reparacion_id):
+    nuevo_estado = (request.form.get("estado") or "").strip()
+    confirm = (request.form.get("confirm") or "").strip()  # "1" si confirmaron
+
+    if not nuevo_estado:
+        return redirect(url_for("dashboard"))
+
+    # seguridad: solo estados permitidos
+    if nuevo_estado not in ESTADOS:
+        flash("Estado inválido.", "warning")
+        return redirect(url_for("dashboard"))
+
+    con = get_con()
+    cur = con.cursor()
+
+    # Si quiere pasar a Facturado, primero confirmar factura (si existe y está como presupuesto)
+    if nuevo_estado == "Facturado":
+        cur.execute("""
+            SELECT id, total, es_presupuesto
+            FROM facturas
+            WHERE reparacion_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+        """, (reparacion_id,))
+        fac = cur.fetchone()
+
+        if not fac:
+            con.close()
+            flash("No hay factura/presupuesto generado en esta reparación.", "warning")
+            return redirect(url_for("dashboard"))
+
+        factura_id, total, es_presupuesto = fac["id"], fac["total"], fac["es_presupuesto"]
+
+        # Si todavía es presupuesto, pedir confirmación
+        if (es_presupuesto is None) or int(es_presupuesto) == 1:
+            if confirm != "1":
+                con.close()
+                flash("Confirmación requerida para facturar.", "warning")
+                return redirect(url_for("dashboard"))
+
+            # Confirmar factura
+            cur.execute("UPDATE facturas SET es_presupuesto = 0 WHERE id = ?", (factura_id,))
+
+            # ---- Cargar repuestos como gasto (AUTO al facturar desde dashboard) ----
+            cur.execute("""
+                SELECT COALESCE(SUM(cantidad * precio_unitario * (1 - COALESCE(descuento,0)/100.0)), 0)
+                FROM reparacion_items
+                WHERE reparacion_id = ?
+                  AND UPPER(COALESCE(tipo,'SERVICIO')) = 'REPUESTO'
+            """, (reparacion_id,))
+            total_repuestos = float(cur.fetchone()[0] or 0)
+
+            # evitar duplicados
+            cur.execute("""
+                DELETE FROM gastos
+                WHERE reparacion_id = ?
+                  AND categoria = 'Repuestos'
+            """, (reparacion_id,))
+
+            if total_repuestos > 0:
+                hoy = date.today().isoformat()
+
+                cur.execute("""
+                    SELECT v.patente
+                    FROM reparaciones r
+                    JOIN vehiculos v ON v.id = r.vehiculo_id
+                    WHERE r.id = ?
+                """, (reparacion_id,))
+                pat = cur.fetchone()
+                patente = pat[0] if pat else ""
+
+                descripcion = f"Repuestos reparación #{reparacion_id} - {patente}".strip()
+
+                cur.execute("""
+                    INSERT INTO gastos (
+                        fecha, categoria, descripcion, monto,
+                        pagador, medio_pago, notas,
+                        pagado, fecha_pago, reparacion_id
+                    )
+                    VALUES (?, 'Repuestos', ?, ?, '', NULL, NULL, 0, NULL, ?)
+                """, (hoy, descripcion, total_repuestos, reparacion_id))
+
+        # si ya era factura real, no hacemos nada extra
+
+    cur.execute("UPDATE reparaciones SET estado=? WHERE id=?", (nuevo_estado, reparacion_id))
+    con.commit()
+    con.close()
+
+    flash("Estado actualizado.", "success")
+    return redirect(url_for("dashboard"))
+
+
+# =========================
+# Items
+# =========================
 @app.route("/reparaciones/<int:reparacion_id>/items/nuevo", methods=["GET", "POST"])
 @login_required
 def item_nuevo(reparacion_id):
@@ -979,37 +1135,33 @@ def item_nuevo(reparacion_id):
     cur = con.cursor()
     cur.execute("SELECT * FROM reparaciones WHERE id=?", (reparacion_id,))
     reparacion = cur.fetchone()
-
     if not reparacion:
         con.close()
         return redirect(url_for("clientes"))
 
     if request.method == "POST":
-        concepto = request.form["concepto"].strip().upper()
-        cantidad = float(request.form["cantidad"] or 0)
-        precio_unitario = float(request.form["precio_unitario"] or 0)
+        concepto = request.form.get("concepto", "").strip().upper()
+        cantidad = float(request.form.get("cantidad") or 0)
+        precio_unitario = float(request.form.get("precio_unitario") or 0)
         descuento = float(request.form.get("descuento") or 0)
-        tipo = request.form.get("tipo") or "SERVICIO"
+        tipo = (request.form.get("tipo") or "SERVICIO").strip().upper()
+        if tipo not in ("SERVICIO", "REPUESTO"):
+            tipo = "SERVICIO"
 
-        # Guardar ítem
         cur.execute("""
-        INSERT INTO reparacion_items (reparacion_id, concepto, cantidad, precio_unitario, descuento, tipo)
-        VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO reparacion_items (reparacion_id, concepto, cantidad, precio_unitario, descuento, tipo)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (reparacion_id, concepto, cantidad, precio_unitario, descuento, tipo))
 
-        # Guardar concepto en sugerencias (si no existe)
-        cur.execute("""
-        INSERT OR IGNORE INTO item_conceptos (nombre) VALUES (?)
-        """, (concepto,))
-
+        cur.execute("INSERT OR IGNORE INTO item_conceptos (nombre) VALUES (?)", (concepto,))
         con.commit()
         con.close()
+
+        backup_db_if_changed()
         return redirect(url_for("reparacion_detalle", reparacion_id=reparacion_id))
 
-    # GET: traer conceptos guardados para el formulario
     cur.execute("SELECT id, nombre FROM item_conceptos ORDER BY nombre")
     conceptos = cur.fetchall()
-
     con.close()
     return render_template("item_form.html", reparacion=reparacion, conceptos=conceptos)
 
@@ -1021,41 +1173,38 @@ def item_editar(item_id):
     cur = con.cursor()
     cur.execute("SELECT * FROM reparacion_items WHERE id=?", (item_id,))
     item = cur.fetchone()
-
     if not item:
         con.close()
         return redirect(url_for("clientes"))
 
-    reparacion_id = item[1]
+    reparacion_id = item["reparacion_id"]
     cur.execute("SELECT * FROM reparaciones WHERE id=?", (reparacion_id,))
     reparacion = cur.fetchone()
 
     if request.method == "POST":
-        concepto = request.form["concepto"].strip().upper()
-        cantidad = float(request.form["cantidad"] or 0)
-        precio_unitario = float(request.form["precio_unitario"] or 0)
+        concepto = request.form.get("concepto", "").strip().upper()
+        cantidad = float(request.form.get("cantidad") or 0)
+        precio_unitario = float(request.form.get("precio_unitario") or 0)
         descuento = float(request.form.get("descuento") or 0)
-        tipo = request.form.get("tipo") or "SERVICIO"
+        tipo = (request.form.get("tipo") or "SERVICIO").strip().upper()
+        if tipo not in ("SERVICIO", "REPUESTO"):
+            tipo = "SERVICIO"
 
         cur.execute("""
-        UPDATE reparacion_items
-        SET concepto=?, cantidad=?, precio_unitario=?, descuento=?, tipo=?
-        WHERE id=?
+            UPDATE reparacion_items
+            SET concepto=?, cantidad=?, precio_unitario=?, descuento=?, tipo=?
+            WHERE id=?
         """, (concepto, cantidad, precio_unitario, descuento, tipo, item_id))
 
-        # también lo guardamos en sugerencias
-        cur.execute("""
-        INSERT OR IGNORE INTO item_conceptos (nombre) VALUES (?)
-        """, (concepto,))
-
+        cur.execute("INSERT OR IGNORE INTO item_conceptos (nombre) VALUES (?)", (concepto,))
         con.commit()
         con.close()
+
+        backup_db_if_changed()
         return redirect(url_for("reparacion_detalle", reparacion_id=reparacion_id))
 
-    # GET: traer conceptos guardados
     cur.execute("SELECT id, nombre FROM item_conceptos ORDER BY nombre")
     conceptos = cur.fetchall()
-
     con.close()
     return render_template("item_form.html", item=item, reparacion=reparacion, conceptos=conceptos)
 
@@ -1067,17 +1216,16 @@ def item_eliminar(item_id):
     cur = con.cursor()
     cur.execute("SELECT reparacion_id FROM reparacion_items WHERE id=?", (item_id,))
     row = cur.fetchone()
-
     if not row:
         con.close()
         return redirect(url_for("clientes"))
 
     reparacion_id = row[0]
-
     cur.execute("DELETE FROM reparacion_items WHERE id=?", (item_id,))
     con.commit()
     con.close()
 
+    backup_db_if_changed()
     return redirect(url_for("reparacion_detalle", reparacion_id=reparacion_id))
 
 
@@ -1089,11 +1237,14 @@ def item_concepto_eliminar(concepto_id):
     cur.execute("DELETE FROM item_conceptos WHERE id=?", (concepto_id,))
     con.commit()
     con.close()
-    # Volver a la pantalla anterior (formulario de ítem)
+
+    backup_db_if_changed()
     return redirect(request.referrer or url_for("facturas_listado"))
 
 
-# ----------------- IMÁGENES DE REPARACIÓN -----------------
+# =========================
+# Imagenes
+# =========================
 @app.route("/reparaciones/<int:reparacion_id>/imagenes/nueva", methods=["GET", "POST"])
 @login_required
 def reparacion_imagen_nueva(reparacion_id):
@@ -1101,20 +1252,17 @@ def reparacion_imagen_nueva(reparacion_id):
     cur = con.cursor()
     cur.execute("SELECT * FROM reparaciones WHERE id=?", (reparacion_id,))
     reparacion = cur.fetchone()
-
     if not reparacion:
         con.close()
         return redirect(url_for("clientes"))
 
     if request.method == "POST":
-        # ahora usamos una lista de archivos
         files = request.files.getlist("imagenes")
         descripcion = request.form.get("descripcion", "").strip()
 
         for file in files:
             if file and allowed_file(file.filename):
                 filename = secure_filename(file.filename)
-                ext = filename.rsplit(".", 1)[1].lower()
                 unique_name = f"rep_{reparacion_id}_{int(time.time())}_{filename}"
                 save_path = os.path.join(app.config["UPLOAD_FOLDER"], unique_name)
                 file.save(save_path)
@@ -1126,6 +1274,8 @@ def reparacion_imagen_nueva(reparacion_id):
 
         con.commit()
         con.close()
+
+        backup_db_if_changed()
         return redirect(url_for("reparacion_detalle", reparacion_id=reparacion_id))
 
     con.close()
@@ -1140,13 +1290,11 @@ def reparacion_imagen_eliminar(img_id):
 
     cur.execute("SELECT reparacion_id, filename FROM reparacion_imagenes WHERE id=?", (img_id,))
     row = cur.fetchone()
-
     if not row:
         con.close()
         return redirect(url_for("clientes"))
 
     reparacion_id, filename = row
-
     if filename:
         file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
         if os.path.exists(file_path):
@@ -1159,10 +1307,13 @@ def reparacion_imagen_eliminar(img_id):
     con.commit()
     con.close()
 
+    backup_db_if_changed()
     return redirect(url_for("reparacion_detalle", reparacion_id=reparacion_id))
 
 
-# ----------------- FACTURAS / PRESUPUESTOS -----------------
+# =========================
+# Factura / Presupuesto
+# =========================
 @app.route("/reparaciones/<int:reparacion_id>/factura")
 @login_required
 def reparacion_factura(reparacion_id):
@@ -1175,79 +1326,74 @@ def reparacion_factura(reparacion_id):
         con.close()
         return redirect(url_for("clientes"))
 
-    vehiculo_id = reparacion[1]
+    vehiculo_id = reparacion["vehiculo_id"]
     cur.execute("SELECT * FROM vehiculos WHERE id=?", (vehiculo_id,))
     vehiculo = cur.fetchone()
-    cliente_id = vehiculo[1]
+    cliente_id = vehiculo["cliente_id"]
     cur.execute("SELECT * FROM clientes WHERE id=?", (cliente_id,))
     cliente = cur.fetchone()
 
-    cur.execute("SELECT * FROM reparacion_items WHERE reparacion_id=?", (reparacion_id,))
+    cur.execute("SELECT * FROM reparacion_items WHERE reparacion_id=? ORDER BY id ASC", (reparacion_id,))
     items = cur.fetchall()
 
-    # ============================
-    # Subtotales separados
-    # ============================
-    subtotal_repuestos = 0
-    subtotal_servicios = 0
+    base_total = 0.0
+    subtotal_repuestos = 0.0
+    subtotal_servicios = 0.0
 
     for it in items:
-        cantidad = it[3] or 0
-        precio = it[4] or 0
-        descuento = 0
-        if len(it) > 5 and it[5] is not None:
-            descuento = it[5]
+        cantidad = float(it["cantidad"] or 0)
+        precio = float(it["precio_unitario"] or 0)
+        descuento = float(it["descuento"] or 0)
+        subtotal = cantidad * precio * (1 - descuento / 100.0)
+        base_total += subtotal
 
-        subtotal_item = cantidad * precio * (1 - descuento / 100.0)
-
-        tipo = (it[6] or "SERVICIO").strip().upper() if len(it) > 6 else "SERVICIO"
+        tipo = (it["tipo"] or "SERVICIO").strip().upper()
         if tipo == "REPUESTO":
-            subtotal_repuestos += subtotal_item
+            subtotal_repuestos += subtotal
         else:
-            subtotal_servicios += subtotal_item
+            subtotal_servicios += subtotal
 
-    base_total = subtotal_repuestos + subtotal_servicios
-
-    # buscar / crear registro de factura-presupuesto
-    cur.execute(
-        "SELECT id, reparacion_id, fecha, total, descuento_global, es_presupuesto "
-        "FROM facturas WHERE reparacion_id=?",
-        (reparacion_id,)
-    )
+    # buscar / crear factura (siempre nace como presupuesto)
+    cur.execute("""
+        SELECT id, reparacion_id, fecha, total, descuento_global, es_presupuesto, total_servicios, total_repuestos
+        FROM facturas
+        WHERE reparacion_id=?
+    """, (reparacion_id,))
     row = cur.fetchone()
 
+    hoy = date.today().isoformat()
+
     if not row:
-        hoy = date.today().isoformat()
         descuento_global = 0.0
         total_final = base_total
-        # la creamos como PRESUPUESTO
         cur.execute("""
-            INSERT INTO facturas (reparacion_id, fecha, total, descuento_global, es_presupuesto)
-            VALUES (?, ?, ?, ?, 1)
-        """, (reparacion_id, hoy, total_final, descuento_global))
+            INSERT INTO facturas (reparacion_id, fecha, total, descuento_global, es_presupuesto, total_servicios, total_repuestos)
+            VALUES (?, ?, ?, ?, 1, ?, ?)
+        """, (reparacion_id, hoy, total_final, descuento_global, subtotal_servicios, subtotal_repuestos))
         con.commit()
+
         factura_id = cur.lastrowid
         factura_fecha = hoy
         es_presupuesto = 1
     else:
-        factura_id, _, factura_fecha, total_guardado, descuento_global, es_presupuesto = row
-        if descuento_global is None:
-            descuento_global = 0.0
-        if es_presupuesto is None:
-            es_presupuesto = 1
+        factura_id = row[0]
+        factura_fecha = row[2]
+        descuento_global = float(row[4] or 0.0)
+        es_presupuesto = int(row[5] or 1)
 
         total_final = base_total * (1 - descuento_global / 100.0)
-        cur.execute(
-            "UPDATE facturas SET total=?, descuento_global=? WHERE id=?",
-            (total_final, descuento_global, factura_id)
-        )
+
+        cur.execute("""
+            UPDATE facturas
+            SET total=?, descuento_global=?, total_servicios=?, total_repuestos=?
+            WHERE id=?
+        """, (total_final, descuento_global, subtotal_servicios, subtotal_repuestos, factura_id))
         con.commit()
 
-    # teléfono formateado para WhatsApp
-    tel_raw = cliente[3] or ""
-    tel_digits = "".join(ch for ch in tel_raw if ch.isdigit())
+    # WhatsApp
+    tel_raw = cliente["telefono"] if "telefono" in cliente.keys() else (cliente[3] or "")
+    tel_digits = "".join(ch for ch in (tel_raw or "") if ch.isdigit())
     wa_phone = ""
-
     if tel_digits:
         if tel_digits.startswith("0"):
             tel_digits = tel_digits[1:]
@@ -1257,7 +1403,6 @@ def reparacion_factura(reparacion_id):
             wa_phone = tel_digits
 
     presupuesto_url = url_for("reparacion_factura", reparacion_id=reparacion_id, _external=True)
-
     con.close()
 
     return render_template(
@@ -1268,14 +1413,14 @@ def reparacion_factura(reparacion_id):
         vehiculo=vehiculo,
         reparacion=reparacion,
         items=items,
-        subtotal_repuestos=subtotal_repuestos,
-        subtotal_servicios=subtotal_servicios,
         base_total=base_total,
         descuento_global=descuento_global,
-        total=total_final,
+        total=base_total * (1 - descuento_global / 100.0),
         wa_phone=wa_phone,
         presupuesto_url=presupuesto_url,
-        es_presupuesto=es_presupuesto
+        es_presupuesto=es_presupuesto,
+        subtotal_repuestos=subtotal_repuestos,
+        subtotal_servicios=subtotal_servicios
     )
 
 
@@ -1286,13 +1431,14 @@ def factura_descuento(factura_id):
     cur = con.cursor()
 
     desc = float(request.form.get("descuento_global") or 0)
-
     cur.execute("UPDATE facturas SET descuento_global=? WHERE id=?", (desc, factura_id))
     con.commit()
 
     cur.execute("SELECT reparacion_id FROM facturas WHERE id=?", (factura_id,))
     row = cur.fetchone()
     con.close()
+
+    backup_db_if_changed()
 
     if row:
         return redirect(url_for("reparacion_factura", reparacion_id=row[0]))
@@ -1305,6 +1451,7 @@ def factura_confirmar(factura_id):
     con = get_con()
     cur = con.cursor()
 
+    # reparación
     cur.execute("SELECT reparacion_id FROM facturas WHERE id=?", (factura_id,))
     row = cur.fetchone()
     if not row:
@@ -1312,15 +1459,79 @@ def factura_confirmar(factura_id):
         return redirect(url_for("facturas_listado"))
 
     reparacion_id = row[0]
+    hoy = date.today().isoformat()
 
-    # marcar como NO presupuesto → ya entra al balance
-    cur.execute("UPDATE facturas SET es_presupuesto = 0 WHERE id=?", (factura_id,))
-    # marcar reparación como facturada
-    cur.execute("UPDATE reparaciones SET estado = 'Facturada' WHERE id=?", (reparacion_id,))
+    # items
+    cur.execute("""
+        SELECT cantidad, precio_unitario, COALESCE(descuento,0), COALESCE(tipo,'SERVICIO')
+        FROM reparacion_items
+        WHERE reparacion_id=?
+    """, (reparacion_id,))
+    items = cur.fetchall()
+
+    total_repuestos = 0.0
+    total_servicios = 0.0
+
+    for cant, precio, desc, tipo in items:
+        cant = float(cant or 0)
+        precio = float(precio or 0)
+        desc = float(desc or 0)
+        subtotal = cant * precio * (1 - desc / 100.0)
+
+        tipo_norm = (tipo or "SERVICIO").strip().upper()
+        if tipo_norm in ("REPUESTO", "REPUESTOS"):
+            total_repuestos += subtotal
+        else:
+            total_servicios += subtotal
+
+    total_final = total_servicios + total_repuestos
+
+    # confirmar factura
+    cur.execute("""
+        UPDATE facturas
+        SET es_presupuesto = 0,
+            total_servicios = ?,
+            total_repuestos = ?,
+            total = ?,
+            fecha = ?
+        WHERE id=?
+    """, (total_servicios, total_repuestos, total_final, hoy, factura_id))
+
+    # estado Facturado
+    cur.execute("UPDATE reparaciones SET estado='Facturado' WHERE id=?", (reparacion_id,))
+
+    # crear/actualizar gasto de repuestos (pendiente)
+    cur.execute("""
+        DELETE FROM gastos
+        WHERE reparacion_id = ?
+          AND categoria = 'Repuestos'
+    """, (reparacion_id,))
+
+    if total_repuestos > 0:
+        cur.execute("""
+            SELECT v.patente
+            FROM reparaciones r
+            JOIN vehiculos v ON v.id = r.vehiculo_id
+            WHERE r.id = ?
+        """, (reparacion_id,))
+        pat = cur.fetchone()
+        patente = pat[0] if pat else ""
+
+        descripcion = f"Repuestos reparación #{reparacion_id} - {patente}".strip()
+
+        cur.execute("""
+            INSERT INTO gastos (
+                fecha, categoria, descripcion, monto,
+                pagador, medio_pago, notas,
+                pagado, fecha_pago, reparacion_id
+            )
+            VALUES (?, 'Repuestos', ?, ?, '', NULL, NULL, 0, NULL, ?)
+        """, (hoy, descripcion, total_repuestos, reparacion_id))
 
     con.commit()
     con.close()
 
+    backup_db_if_changed()
     return redirect(url_for("reparacion_detalle", reparacion_id=reparacion_id))
 
 
@@ -1333,79 +1544,63 @@ def facturas_listado():
     desde = request.args.get("desde") or ""
     hasta = request.args.get("hasta") or ""
 
-    # ============================
-    # FACTURAS (INGRESOS)
-    # ============================
     sql_f = """
         SELECT 
             f.id,
             f.fecha,
             f.total,
+            COALESCE(f.total_servicios, f.total) AS total_servicios,
+            COALESCE(f.total_repuestos, 0) AS total_repuestos,
             c.nombre,
             c.apellido,
             v.patente,
             v.marca,
             v.modelo,
-            r.id,
-            f.es_presupuesto
+            r.id
         FROM facturas f
         JOIN reparaciones r ON r.id = f.reparacion_id
         JOIN vehiculos v ON v.id = r.vehiculo_id
         JOIN clientes c ON c.id = v.cliente_id
-        WHERE f.es_presupuesto = 0
+        WHERE COALESCE(f.es_presupuesto,1) = 0
     """
 
-    filtros_f = []
-    params_f = []
-
+    filtros = []
+    params = []
     if desde:
-        filtros_f.append("DATE(f.fecha) >= DATE(?)")
-        params_f.append(desde)
+        filtros.append("DATE(f.fecha) >= DATE(?)")
+        params.append(desde)
     if hasta:
-        filtros_f.append("DATE(f.fecha) <= DATE(?)")
-        params_f.append(hasta)
-
-    if filtros_f:
-        sql_f += " AND " + " AND ".join(filtros_f)
+        filtros.append("DATE(f.fecha) <= DATE(?)")
+        params.append(hasta)
+    if filtros:
+        sql_f += " AND " + " AND ".join(filtros)
 
     sql_f += " ORDER BY f.fecha DESC"
-
-    cur.execute(sql_f, params_f)
+    cur.execute(sql_f, params)
     facturas = cur.fetchall()
 
-    # ============================
-    # GASTOS (solo para el resumen)
-    # ============================
+    # gastos
     sql_g = """
-        SELECT 
-            id,
-            fecha,
-            categoria,
-            descripcion,
-            monto
+        SELECT id, fecha, categoria, descripcion, monto, pagador, medio_pago, notas, pagado, fecha_pago, reparacion_id
         FROM gastos
         WHERE 1=1
     """
-
     filtros_g = []
     params_g = []
-
     if desde:
         filtros_g.append("DATE(fecha) >= DATE(?)")
         params_g.append(desde)
     if hasta:
         filtros_g.append("DATE(fecha) <= DATE(?)")
         params_g.append(hasta)
-
     if filtros_g:
         sql_g += " AND " + " AND ".join(filtros_g)
 
-    sql_g += " ORDER BY fecha DESC"
-
+    sql_g += " ORDER BY fecha DESC, id DESC"
     cur.execute(sql_g, params_g)
     gastos = cur.fetchall()
 
-    total_ingresos = sum((f[2] or 0) for f in facturas)
+    total_ingresos = sum((f[3] or 0) for f in facturas)  # servicios
     total_gastos = sum((g[4] or 0) for g in gastos)
     balance_neto = total_ingresos - total_gastos
 
@@ -1423,7 +1618,9 @@ def facturas_listado():
     )
 
 
-# ----------------- GASTOS -----------------
+# =========================
+# Gastos
+# =========================
 @app.route("/gastos")
 @login_required
 def gastos_listado():
@@ -1433,9 +1630,9 @@ def gastos_listado():
     con = get_con()
     cur = con.cursor()
 
-    # Traemos pagado y fecha_pago para el botón
     sql = """
-        SELECT id, fecha, categoria, descripcion, monto, medio_pago, notas, pagado, fecha_pago
+        SELECT id, fecha, categoria, descripcion, monto,
+               pagador, medio_pago, notas, COALESCE(pagado,0), fecha_pago, reparacion_id
         FROM gastos
         WHERE 1=1
     """
@@ -1446,7 +1643,6 @@ def gastos_listado():
     if hasta:
         sql += " AND fecha <= ?"
         params.append(hasta)
-
     sql += " ORDER BY fecha DESC, id DESC"
 
     cur.execute(sql, params)
@@ -1455,73 +1651,39 @@ def gastos_listado():
 
     total_gastos = sum((row[4] or 0) for row in gastos) if gastos else 0
 
-    return render_template(
-        "gastos.html",
-        gastos=gastos,
-        desde=desde,
-        hasta=hasta,
-        total_gastos=total_gastos
-    )
+    return render_template("gastos.html", gastos=gastos, desde=desde, hasta=hasta, total_gastos=total_gastos)
 
 
-@app.route("/gastos/nuevo", methods=["GET", "POST"])
+@app.route("/gastos/nuevo", methods=["POST"])
 @login_required
 def gasto_nuevo():
-    if request.method == "POST":
-        fecha = request.form["fecha"]
-        categoria = (request.form.get("categoria") or "").strip()
-        descripcion = (request.form.get("descripcion") or "").strip()
-        monto = float(request.form.get("monto") or 0)
+    fecha = request.form.get("fecha")
+    descripcion = request.form.get("descripcion", "").strip()
+    monto = request.form.get("monto")
+    categoria = request.form.get("categoria", "").strip()
+    pagador = request.form.get("pagador", "").strip()
 
-        medio_pago = (request.form.get("medio_pago") or "").strip()
-        notas = (request.form.get("notas") or "").strip()
+    try:
+        monto = float(monto)
+    except:
+        monto = 0
 
-        con = get_con()
-        cur = con.cursor()
-        cur.execute("""
-            INSERT INTO gastos (fecha, categoria, descripcion, monto, medio_pago, notas, pagado, fecha_pago)
-            VALUES (?, ?, ?, ?, ?, ?, 0, NULL)
-        """, (fecha, categoria, descripcion, monto, medio_pago, notas))
-        con.commit()
-        con.close()
+    pagado = 0
+    fecha_pago = None
 
-        return redirect(url_for("gastos_listado"))
-
-    return render_template("gasto_form.html")
-
-
-@app.route("/gastos/<int:gasto_id>/toggle-pagado", methods=["POST"])
-@login_required
-def gasto_toggle_pagado(gasto_id):
     con = get_con()
     cur = con.cursor()
 
-    cur.execute("SELECT pagado FROM gastos WHERE id=?", (gasto_id,))
-    row = cur.fetchone()
-    if not row:
-        con.close()
-        return redirect(url_for("gastos_listado"))
-
-    pagado_actual = int(row[0] or 0)
-    nuevo = 0 if pagado_actual == 1 else 1
-
-    if nuevo == 1:
-        cur.execute("""
-            UPDATE gastos
-            SET pagado = 1,
-                fecha_pago = ?
-            WHERE id = ?
-        """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), gasto_id))
-    else:
-        cur.execute("""
-            UPDATE gastos
-            SET pagado = 0,
-                fecha_pago = NULL
-            WHERE id = ?
-        """, (gasto_id,))
+    cur.execute("""
+        INSERT INTO gastos
+        (fecha, categoria, descripcion, monto, pagador, pagado, fecha_pago)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (fecha, categoria, descripcion, monto, pagador, pagado, fecha_pago))
 
     con.commit()
     con.close()
+
+    backup_db_if_changed()
     return redirect(url_for("gastos_listado"))
 
 
@@ -1533,10 +1695,40 @@ def gasto_eliminar(gasto_id):
     cur.execute("DELETE FROM gastos WHERE id=?", (gasto_id,))
     con.commit()
     con.close()
+
+    backup_db_if_changed()
     return redirect(url_for("gastos_listado"))
 
 
-# ----------------- CITAS -----------------
+@app.route("/gastos/<int:gasto_id>/toggle_pagado", methods=["POST"])
+@login_required
+def gasto_toggle_pagado(gasto_id):
+    con = get_con()
+    cur = con.cursor()
+
+    cur.execute("""
+        UPDATE gastos
+        SET pagado = CASE COALESCE(pagado,0)
+                        WHEN 0 THEN 1
+                        ELSE 0
+                     END,
+            fecha_pago = CASE COALESCE(pagado,0)
+                            WHEN 0 THEN ?
+                            ELSE NULL
+                         END
+        WHERE id = ?
+    """, (date.today().isoformat(), gasto_id))
+
+    con.commit()
+    con.close()
+
+    backup_db_if_changed()
+    return redirect(request.referrer or url_for("gastos_listado"))
+
+
+# =========================
+# Citas
+# =========================
 @app.route("/citas")
 @login_required
 def citas_listado():
@@ -1567,11 +1759,11 @@ def citas_listado():
 @login_required
 def cita_nueva():
     if request.method == "POST":
-        fecha = request.form["fecha"]
-        hora = request.form["hora"]
-        cliente_nombre = request.form["cliente_nombre"].strip()
-        telefono = request.form["telefono"].strip()
-        descripcion = request.form["descripcion"].strip()
+        fecha = request.form.get("fecha", "")
+        hora = request.form.get("hora", "")
+        cliente_nombre = request.form.get("cliente_nombre", "").strip()
+        telefono = request.form.get("telefono", "").strip()
+        descripcion = request.form.get("descripcion", "").strip()
 
         con = get_con()
         cur = con.cursor()
@@ -1582,6 +1774,7 @@ def cita_nueva():
         con.commit()
         con.close()
 
+        backup_db_if_changed()
         return redirect(url_for("citas_listado"))
 
     return render_template("cita_form.html")
@@ -1594,11 +1787,11 @@ def cita_editar(cita_id):
     cur = con.cursor()
 
     if request.method == "POST":
-        fecha = request.form["fecha"]
-        hora = request.form["hora"]
-        cliente_nombre = request.form["cliente_nombre"].strip()
-        telefono = request.form["telefono"].strip()
-        descripcion = request.form["descripcion"].strip()
+        fecha = request.form.get("fecha", "")
+        hora = request.form.get("hora", "")
+        cliente_nombre = request.form.get("cliente_nombre", "").strip()
+        telefono = request.form.get("telefono", "").strip()
+        descripcion = request.form.get("descripcion", "").strip()
 
         cur.execute("""
             UPDATE citas
@@ -1607,6 +1800,8 @@ def cita_editar(cita_id):
         """, (fecha, hora, cliente_nombre, telefono, descripcion, cita_id))
         con.commit()
         con.close()
+
+        backup_db_if_changed()
         return redirect(url_for("citas_listado"))
 
     cur.execute("SELECT id, fecha, hora, cliente_nombre, telefono, descripcion FROM citas WHERE id=?", (cita_id,))
@@ -1627,20 +1822,22 @@ def cita_eliminar(cita_id):
     cur.execute("DELETE FROM citas WHERE id=?", (cita_id,))
     con.commit()
     con.close()
+
+    backup_db_if_changed()
     return redirect(url_for("citas_listado"))
 
 
-# ----------------- MAIN -----------------
+# =========================
+# Main
+# =========================
 if __name__ == "__main__":
     if not os.path.exists("static"):
         os.mkdir("static")
     if not os.path.exists(os.path.join("static", "uploads")):
-        os.mkdir(os.path.join("static", "uploads"))
+        os.makedirs(os.path.join("static", "uploads"), exist_ok=True)
     if not os.path.exists(BACKUP_FOLDER):
-        os.mkdir(BACKUP_FOLDER)
-
-    # Backup automático antes de cualquier cambio en la DB
-    backup_db()
+        os.makedirs(BACKUP_FOLDER, exist_ok=True)
 
     init_db()
+    backup_db_if_changed()
     app.run(host="0.0.0.0", port=5000, debug=True)
