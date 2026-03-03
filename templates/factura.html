@@ -19,14 +19,12 @@
     box-shadow: 0 0 8px rgba(0,0,0,0.08);
     border-top: 6px solid #c1121f;
 }
-
 .presupuesto-header {
     text-align: center;
     margin-bottom: 22px;
     padding-bottom: 15px;
     border-bottom: 2px solid #eee;
 }
-
 .presupuesto-logo-grande { height: 250px; }
 .presupuesto-titulo { font-size: 1.6rem; font-weight: 700; text-transform: uppercase; margin-top: 6px; }
 .presupuesto-subtitulo { font-size: 0.9rem; color: #c1121f; font-weight: 600; text-transform: uppercase; margin-top: -4px; }
@@ -103,18 +101,16 @@
                 </a>
             {% endif %}
 
-            {% if es_presupuesto %}
-                <form action="{{ url_for('factura_confirmar', factura_id=factura_id) }}"
-                      method="post"
-                      class="d-inline">
-                    <button type="submit" class="btn btn-primary btn-sm">
-                        ✅ Agregar al balance
-                    </button>
-                </form>
-            {% else %}
-                <span class="badge bg-success align-self-center">
-                    ✅ Ya incluida en el balance
-                </span>
+            {% if es_presupuesto == 1 %}
+            <form method="post"
+                  action="{{ url_for('factura_confirmar', factura_id=factura_id) }}"
+                  style="display:inline;">
+                <button type="submit"
+                        class="btn btn-primary btn-sm"
+                        onclick="return confirm('¿Confirmás este presupuesto y lo marcás como FACTURADO? Se generará el gasto de REPUESTOS si corresponde.');">
+                    ✅ Confirmar / Facturar
+                </button>
+            </form>
             {% endif %}
 
             <a class="btn btn-secondary btn-sm"
@@ -202,12 +198,11 @@
                 <tr class="table-secondary">
                     <td colspan="5"><strong>Repuestos</strong></td>
                 </tr>
-                {% for it in items if it[6] == 'REPUESTO' %}
+                {% for it in items if (it[6] or 'SERVICIO')|upper in ['REPUESTO','REPUESTOS','INSUMO','INSUMOS'] %}
                     {% set cantidad = it[3] %}
                     {% set precio = it[4] %}
                     {% set desc = it[5] or 0 %}
                     {% set subtotal = cantidad * precio * (1 - desc/100) %}
-
                     <tr>
                         <td>{{ it[2].upper() }}</td>
                         <td class="text-end">{{ cantidad }}</td>
@@ -216,7 +211,6 @@
                         <td class="text-end">{{ "%.2f"|format(subtotal) }}</td>
                     </tr>
                 {% endfor %}
-
                 <tr>
                     <td colspan="4" class="text-end fw-bold">Subtotal repuestos</td>
                     <td class="text-end fw-bold">$ {{ "%.2f"|format(subtotal_repuestos or 0) }}</td>
@@ -226,12 +220,11 @@
                 <tr class="table-secondary">
                     <td colspan="5"><strong>Servicios</strong></td>
                 </tr>
-                {% for it in items if it[6] == 'SERVICIO' %}
+                {% for it in items if (it[6] or 'SERVICIO')|upper not in ['REPUESTO','REPUESTOS','INSUMO','INSUMOS'] %}
                     {% set cantidad = it[3] %}
                     {% set precio = it[4] %}
                     {% set desc = it[5] or 0 %}
                     {% set subtotal = cantidad * precio * (1 - desc/100) %}
-
                     <tr>
                         <td>{{ it[2].upper() }}</td>
                         <td class="text-end">{{ cantidad }}</td>
@@ -240,7 +233,6 @@
                         <td class="text-end">{{ "%.2f"|format(subtotal) }}</td>
                     </tr>
                 {% endfor %}
-
                 <tr>
                     <td colspan="4" class="text-end fw-bold">Subtotal servicios</td>
                     <td class="text-end fw-bold">$ {{ "%.2f"|format(subtotal_servicios or 0) }}</td>
@@ -252,7 +244,6 @@
 
         <div class="presupuesto-resumen">
             <div class="presupuesto-resumen-inner">
-
                 <div class="presupuesto-resumen-row">
                     <span>Subtotal repuestos:</span>
                     <strong>$ {{ "%.2f"|format(subtotal_repuestos or 0) }}</strong>

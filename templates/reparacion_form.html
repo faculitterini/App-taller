@@ -10,37 +10,68 @@
 </h3>
 
 <p>
-    Cliente: <strong>{{ cliente[1] }} {{ cliente[2] }}</strong><br>
-    Vehículo: <strong>{{ vehiculo[2] }} - {{ vehiculo[3] }} {{ vehiculo[4] }}</strong>
+    Cliente: <strong>{{ cliente.nombre }} {{ cliente.apellido }}</strong><br>
+    Vehículo: <strong>{{ vehiculo.patente }} - {{ vehiculo.marca }} {{ vehiculo.modelo }}</strong>
 </p>
 
-{% set estado_actual = reparacion and reparacion[5] or 'Ingresado' %}
+{% if reparacion %}
+    {% set estado_actual = reparacion.estado %}
+{% else %}
+    {% set estado_actual = "Presupuesto" %}
+{% endif %}
 
 <form method="POST">
-    <div class="mb-2">
-        <label for="fecha" class="form-label">Fecha</label>
+
+    <div class="mb-3">
+        <label class="form-label">Fecha</label>
         <input
             type="date"
             class="form-control"
-            id="fecha"
             name="fecha"
-            value="{{ reparacion and reparacion[2] or '' }}"
+            value="{{ reparacion.fecha if reparacion else '' }}"
             required
         >
     </div>
 
-    <textarea class="form-control mb-2" name="descripcion" placeholder="Descripción del trabajo">{{ reparacion and reparacion[3] or '' }}</textarea>
-    <textarea class="form-control mb-2" name="notas" placeholder="Notas internas">{{ reparacion and reparacion[4] or '' }}</textarea>
+    <div class="mb-3">
+        <label class="form-label">Descripción</label>
+        <textarea
+            class="form-control"
+            name="descripcion"
+            rows="3"
+        >{{ reparacion.descripcion if reparacion else '' }}</textarea>
+    </div>
 
-    <label class="form-label mt-2">Estado</label>
-    <select name="estado" class="form-select mb-3">
-        {% for e in ['Ingresado', 'En proceso', 'Esperando repuesto', 'Terminado', 'Entregado', 'Facturada'] %}
-        <option value="{{ e }}" {% if estado_actual == e %}selected{% endif %}>{{ e }}</option>
-        {% endfor %}
-    </select>
+    <div class="mb-3">
+        <label class="form-label">Notas internas</label>
+        <textarea
+            class="form-control"
+            name="notas"
+            rows="2"
+        >{{ reparacion.notas if reparacion else '' }}</textarea>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Estado</label>
+
+        <select name="estado" class="form-select">
+
+            {% for e in estados %}
+                <option value="{{ e }}"
+                    {% if estado_actual == e %}selected{% endif %}>
+                    {{ e }}
+                </option>
+            {% endfor %}
+
+        </select>
+    </div>
 
     <button class="btn btn-primary">Guardar</button>
-    <a href="/vehiculos/{{ vehiculo[0] }}/reparaciones" class="btn btn-secondary">Cancelar</a>
+    <a href="{{ url_for('reparaciones_vehiculo', vehiculo_id=vehiculo.id) }}"
+       class="btn btn-secondary">
+        Cancelar
+    </a>
+
 </form>
 
 {% endblock %}

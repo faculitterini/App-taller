@@ -594,6 +594,18 @@
             </div>
         </header>
 
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        <div class="container-fluid px-0 mb-3">
+        {% for category, msg in messages %}
+            <div class="alert alert-{{ 'warning' if category=='warning' else 'success' }} mb-2">
+            {{ msg }}
+            </div>
+        {% endfor %}
+        </div>
+    {% endif %}
+    {% endwith %}
+
         <!-- CONTENIDO -->
         <main class="main-content">
             {% block contenido %}{% endblock %}

@@ -8,68 +8,52 @@
     <form class="row g-2 align-items-end" method="get">
         <div class="col-12 col-md-3">
             <label class="form-label mb-1 small text-muted">Desde</label>
-            <input type="date"
-                   name="desde"
-                   class="form-control"
-                   value="{{ desde }}">
+            <input type="date" name="desde" class="form-control" value="{{ desde }}">
         </div>
         <div class="col-12 col-md-3">
             <label class="form-label mb-1 small text-muted">Hasta</label>
-            <input type="date"
-                   name="hasta"
-                   class="form-control"
-                   value="{{ hasta }}">
+            <input type="date" name="hasta" class="form-control" value="{{ hasta }}">
         </div>
         <div class="col-6 col-md-3 mt-2 mt-md-4">
-            <button type="submit" class="btn btn-primary w-100">
-                Filtrar
-            </button>
+            <button type="submit" class="btn btn-primary w-100">Filtrar</button>
         </div>
         <div class="col-6 col-md-3 mt-2 mt-md-4">
-            <a href="{{ url_for('gastos_listado') }}"
-               class="btn btn-outline-light w-100">
-                Limpiar
-            </a>
+            <a href="{{ url_for('gastos_listado') }}" class="btn btn-outline-light w-100">Limpiar</a>
         </div>
     </form>
 </div>
 
 <div class="row g-3">
+    <!-- NUEVO GASTO -->
     <div class="col-12 col-lg-4">
         <div class="card-dark-soft p-3 h-100">
             <h5 class="mb-3">Nuevo gasto</h5>
+
             <form method="post" action="{{ url_for('gasto_nuevo') }}">
                 <div class="mb-2">
                     <label class="form-label small text-muted">Fecha *</label>
                     <input type="date" name="fecha" class="form-control" required>
                 </div>
+
                 <div class="mb-2">
-                    <label class="form-label small text-muted">Categoría</label>
-                    <input type="text" name="categoria" class="form-control"
-                           placeholder="Herramientas, comida, repuestos, etc.">
-                </div>
-                <div class="mb-2">
-                    <label class="form-label small text-muted">Descripción</label>
-                    <textarea name="descripcion" rows="3" class="form-control"
-                              placeholder="Detalle del gasto"></textarea>
+                    <label class="form-label small text-muted">Descripción *</label>
+                    <input type="text" name="descripcion" class="form-control" required>
                 </div>
 
                 <div class="mb-2">
-                    <label class="form-label small text-muted">Medio de pago</label>
-                    <input type="text" name="medio_pago" class="form-control"
-                           placeholder="Efectivo, Débito, Transferencia...">
+                    <label class="form-label small text-muted">Monto *</label>
+                    <input type="number" step="0.01" min="0" name="monto" class="form-control" required>
                 </div>
 
                 <div class="mb-2">
-                    <label class="form-label small text-muted">Notas</label>
-                    <textarea name="notas" rows="2" class="form-control"
-                              placeholder="Opcional"></textarea>
+                    <label class="form-label small text-muted">Quién pagó *</label>
+                    <input type="text" name="pagador" class="form-control" required>
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label small text-muted">Monto *</label>
-                    <input type="number" step="0.01" min="0"
-                           name="monto" class="form-control" required>
+                    <label class="form-label small text-muted">Categoría</label>
+                    <input type="text" name="categoria" class="form-control"
+                           placeholder="Comida, Herramienta, Repuesto...">
                 </div>
 
                 <button class="btn btn-danger w-100" type="submit">
@@ -79,6 +63,7 @@
         </div>
     </div>
 
+    <!-- LISTADO -->
     <div class="col-12 col-lg-8">
         <div class="card-dark-soft p-3 h-100">
             <div class="d-flex justify-content-between align-items-center mb-2">
@@ -103,27 +88,36 @@
                     <tbody>
                     {% if gastos %}
                         {% for g in gastos %}
-                            {# g: id, fecha, categoria, descripcion, monto, medio_pago, notas, pagado, fecha_pago #}
-                            {% set pagado = (g[7] or 0) %}
+                            {# g: id, fecha, categoria, descripcion, monto, pagador, medio_pago, notas, pagado, fecha_pago #}
+                            {% set pagado = (g[8] or 0) %}
                             <tr>
                                 <td>{{ g[1] }}</td>
+
                                 <td>{{ g[2] or '-' }}</td>
+
                                 <td>
                                     {{ g[3] or '-' }}
+
                                     {% if g[5] %}
-                                        <div class="small text-muted">Medio: {{ g[5] }}</div>
+                                        <div class="small text-muted">Pagó: <strong>{{ g[5] }}</strong></div>
                                     {% endif %}
+
                                     {% if g[6] %}
-                                        <div class="small text-muted">Notas: {{ g[6] }}</div>
+                                        <div class="small text-muted">Medio: {{ g[6] }}</div>
+                                    {% endif %}
+
+                                    {% if g[7] %}
+                                        <div class="small text-muted">Notas: {{ g[7] }}</div>
                                     {% endif %}
                                 </td>
+
                                 <td class="text-end">$ {{ '%.2f'|format(g[4] or 0) }}</td>
 
                                 <td>
-                                    {% if pagado == 1 %}
+                                    {% if pagado|int == 1 %}
                                         <span class="badge bg-success">Pagado</span>
-                                        {% if g[8] %}
-                                            <div class="small text-muted">{{ g[8] }}</div>
+                                        {% if g[9] %}
+                                            <div class="small text-muted">{{ g[9] }}</div>
                                         {% endif %}
                                     {% else %}
                                         <span class="badge bg-warning text-dark">Pendiente</span>
@@ -131,21 +125,18 @@
                                 </td>
 
                                 <td class="text-end d-flex justify-content-end gap-1 flex-wrap">
-
-                                    <form method="post"
-                                          action="{{ url_for('gasto_toggle_pagado', gasto_id=g[0]) }}"
-                                          class="d-inline">
-                                        {% if pagado == 0 %}
-                                            <button type="submit"
-                                                    class="btn btn-sm btn-success"
-                                                    onclick="return confirm('¿Confirmás que ya se pagó este gasto?');">
-                                                ✅ Pagado
-                                            </button>
-                                        {% else %}
+                                    <form method="post" action="{{ url_for('gasto_toggle_pagado', gasto_id=g[0]) }}">
+                                        {% if pagado|int == 1 %}
                                             <button type="submit"
                                                     class="btn btn-sm btn-outline-secondary"
                                                     onclick="return confirm('¿Deshacer el marcado de pagado?');">
                                                 ↩ Deshacer
+                                            </button>
+                                        {% else %}
+                                            <button type="submit"
+                                                    class="btn btn-sm btn-success"
+                                                    onclick="return confirm('¿Confirmás que ya se pagó este gasto?');">
+                                                ✅ Pagado
                                             </button>
                                         {% endif %}
                                     </form>
@@ -168,6 +159,7 @@
                     </tbody>
                 </table>
             </div>
+
         </div>
     </div>
 </div>
