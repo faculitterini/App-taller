@@ -1,6 +1,9 @@
-import os, re, sqlite3, hashlib, email, imaplib
+import os, re, sqlite3, hashlib, email
+import imaplib
 from email.header import decode_header
 from datetime import datetime
+
+from pypdf import PdfReader  # pip install pypdf
 
 DB_NAME = "database.db"
 SAVE_DIR = os.path.join("static", "uploads", "diagnosticos")
@@ -9,6 +12,8 @@ GMAIL_USER = "doccar.arg@gmail.com"
 GMAIL_APP_PASSWORD = "zrdn lysz xwqd dhkd"
 
 VIN_REGEX = re.compile(r"\b[A-HJ-NPR-Z0-9]{17}\b")
+VIN_LABEL_REGEX = re.compile(r"VIN:\s*([A-HJ-NPR-Z0-9]{17})", re.IGNORECASE)
+LINEA_VEHICULO_REGEX = re.compile(r"\b(19\d{2}|20\d{2})\s*/\s*([A-Za-z0-9 _-]+)\s*/\s*([A-Za-z0-9 _-]+)", re.IGNORECASE)
 
 def db_con():
     return sqlite3.connect(DB_NAME)
@@ -41,17 +46,58 @@ def clean_filename(name: str) -> str:
     name = decode_mime(name)
     return re.sub(r"[^a-zA-Z0-9._-]+", "_", name)
 
-def main():
-    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
-        raise SystemExit("Faltan env vars AUTEL_GMAIL_USER / AUTEL_GMAIL_APP_PASSWORD")
+def extract_from_pdf(pdf_path: str):
+    """
+    Devuelve (vin, marca, modelo) si los encuentra dentro del PDF Autel.
+    """
+    try:
+        reader = PdfReader(pdf_path)
+        text = ""
+        for page in reader.pages:
+            text += (page.extract_text() or "") + "\n"
+        up = text.upper()
 
+        # VIN (mejor con etiqueta)
+        m = VIN_LABEL_REGEX.search(up)
+        vin = m.group(1) if m else guess_vin(up)
+
+        # Marca / Modelo: suele venir como "2009/Citroen/C4/ew10"
+        # Busco una línea con AAAA/Marca/Modelo
+        marca = None
+        modelo = None
+
+        # Caso 1: formato con slash
+        # Ej: "2009/Citroen/C4/ew10"
+        for line in text.splitlines():
+            if "/" in line and "CITROEN" in line.upper():
+                # intento extraer marca y modelo por split
+                parts = [p.strip() for p in line.split("/") if p.strip()]
+                if len(parts) >= 3 and parts[0].isdigit():
+                    marca = parts[1]
+                    modelo = parts[2]
+                    break
+
+        # Caso 2: formato con espacios y slashes
+        if not marca or not modelo:
+            m2 = LINEA_VEHICULO_REGEX.search(text)
+            if m2:
+                marca = m2.group(2).strip()
+                modelo = m2.group(3).strip()
+
+        return vin, marca, modelo
+
+    except Exception:
+        return None, None, None
+
+def main():
     os.makedirs(SAVE_DIR, exist_ok=True)
 
     mail = imaplib.IMAP4_SSL("imap.gmail.com")
     mail.login(GMAIL_USER, GMAIL_APP_PASSWORD)
     mail.select("inbox")
 
-    status, data = mail.search(None, "ALL")
+    # Traer solo NO LEÍDOS
+    status, data = mail.search(None, "UNSEEN")
     if status != "OK":
         return
 
@@ -74,7 +120,9 @@ def main():
         from_email = decode_mime(msg.get("From"))
         date_hdr = decode_mime(msg.get("Date"))
 
-        vin = guess_vin(subject)
+        # fallback VIN desde asunto
+        vin_fallback = guess_vin(subject)
+
         saved_any = False
 
         for part in msg.walk():
@@ -88,6 +136,7 @@ def main():
 
             file_hash = sha256_bytes(payload)
 
+            # Evitar duplicados
             cur.execute("SELECT id FROM diagnosticos WHERE sha256=?", (file_hash,))
             if cur.fetchone():
                 continue
@@ -100,11 +149,23 @@ def main():
 
             created_at = datetime.now().isoformat(timespec="seconds")
 
+            vin = vin_fallback
+            marca = None
+            modelo = None
+
+            # Si es PDF, sacar datos del PDF
+            if unique.lower().endswith(".pdf"):
+                vin_pdf, marca_pdf, modelo_pdf = extract_from_pdf(filepath)
+                vin = vin_pdf or vin
+                marca = marca_pdf
+                modelo = modelo_pdf
+
             cur.execute("""
                 INSERT INTO diagnosticos
                 (fecha_mail, from_email, subject, filename, vin, marca, modelo, created_at, sha256)
-                VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?)
-            """, (date_hdr, from_email, subject, unique, vin, created_at, file_hash))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (date_hdr, from_email, subject, unique, vin, marca, modelo, created_at, file_hash))
+
             con.commit()
             saved_any = True
 
