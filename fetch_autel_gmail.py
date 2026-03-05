@@ -51,7 +51,7 @@ def main():
     mail.login(GMAIL_USER, GMAIL_APP_PASSWORD)
     mail.select("inbox")
 
-    status, data = mail.search(None, "UNSEEN")
+    status, data = mail.search(None, "ALL")
     if status != "OK":
         return
 
