@@ -2,7 +2,6 @@ import os, re, sqlite3, hashlib, email
 import imaplib
 from email.header import decode_header
 from datetime import datetime
-
 from pypdf import PdfReader  # pip install pypdf
 
 DB_NAME = "database.db"
