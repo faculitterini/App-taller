@@ -1,13 +1,12 @@
-import os, re, sqlite3, hashlib, email
-import imaplib
+import os, re, sqlite3, hashlib, email, imaplib
 from email.header import decode_header
 from datetime import datetime
 
 DB_NAME = "database.db"
 SAVE_DIR = os.path.join("static", "uploads", "diagnosticos")
 
-GMAIL_USER = os.environ.get("doccar.arg@gmail.com", "")
-GMAIL_APP_PASSWORD = os.environ.get("zrdn lysz xwqd dhkd", "")
+GMAIL_USER = os.environ.get("AUTEL_GMAIL_USER", "")
+GMAIL_APP_PASSWORD = os.environ.get("AUTEL_GMAIL_APP_PASSWORD", "")
 
 VIN_REGEX = re.compile(r"\b[A-HJ-NPR-Z0-9]{17}\b")
 
@@ -52,7 +51,6 @@ def main():
     mail.login(GMAIL_USER, GMAIL_APP_PASSWORD)
     mail.select("inbox")
 
-    # Traer solo NO LEÍDOS
     status, data = mail.search(None, "UNSEEN")
     if status != "OK":
         return
@@ -76,9 +74,7 @@ def main():
         from_email = decode_mime(msg.get("From"))
         date_hdr = decode_mime(msg.get("Date"))
 
-        # VIN desde el asunto (si viene)
         vin = guess_vin(subject)
-
         saved_any = False
 
         for part in msg.walk():
@@ -92,7 +88,6 @@ def main():
 
             file_hash = sha256_bytes(payload)
 
-            # Evitar duplicados
             cur.execute("SELECT id FROM diagnosticos WHERE sha256=?", (file_hash,))
             if cur.fetchone():
                 continue
@@ -113,7 +108,6 @@ def main():
             con.commit()
             saved_any = True
 
-        # Si guardó algo, marcamos el mail como leído
         if saved_any:
             mail.store(msg_id, '+FLAGS', '\\Seen')
 
