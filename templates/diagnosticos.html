@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block contenido %}
+
+<h2 class="mb-3">Diagnósticos</h2>
+
+<form class="row g-2 mb-3" method="get">
+  <div class="col-12 col-md-8">
+    <input class="form-control" name="q" placeholder="Buscar por VIN / Marca / Modelo / Asunto"
+           value="{{ q or '' }}">
+  </div>
+  <div class="col-6 col-md-2">
+    <button class="btn btn-primary w-100">Buscar</button>
+  </div>
+  <div class="col-6 col-md-2">
+    <a class="btn btn-secondary w-100" href="{{ url_for('diagnosticos_listado') }}">Limpiar</a>
+  </div>
+</form>
+
+<div class="card-dark-soft p-3">
+  <div class="table-responsive">
+    <table class="table table-sm table-dark-custom mb-0">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Fecha mail</th>
+          <th>VIN</th>
+          <th>Marca</th>
+          <th>Modelo</th>
+          <th>Asunto</th>
+          <th class="text-end">Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% if diagnosticos %}
+        {% for d in diagnosticos %}
+          <tr>
+            <td>#{{ d[0] }}</td>
+            <td class="small">{{ d[1] or '-' }}</td>
+            <td>{{ d[2] or '-' }}</td>
+            <td>{{ d[3] or '-' }}</td>
+            <td>{{ d[4] or '-' }}</td>
+            <td class="small">{{ d[5] or '-' }}</td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-success"
+                 href="{{ url_for('diagnostico_descargar', diag_id=d[0]) }}">
+                Descargar
+              </a>
+            </td>
+          </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-3">No hay diagnósticos cargados.</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

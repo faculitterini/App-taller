@@ -1,5 +1,5 @@
-# app.py (ARREGLADO)
-from flask import Flask, render_template, request, redirect, session, url_for, flash
+# app.py (ARREGLADO + DIAGNÓSTICOS)
+from flask import Flask, render_template, request, redirect, session, url_for, flash, send_from_directory
 import sqlite3
 import os
 from datetime import date, datetime, timedelta
@@ -356,6 +356,54 @@ def admin_required(f):
             return redirect(url_for("dashboard"))
         return f(*args, **kwargs)
     return wrapper
+
+
+# =========================
+# Diagnósticos (AUTEL)
+# =========================
+@app.route("/diagnosticos")
+@login_required
+def diagnosticos_listado():
+    q = (request.args.get("q") or "").strip()
+
+    con = get_con()
+    cur = con.cursor()
+
+    if q:
+        p = f"%{q}%"
+        cur.execute("""
+            SELECT id, fecha_mail, vin, marca, modelo, subject, filename, created_at
+            FROM diagnosticos
+            WHERE vin LIKE ? OR marca LIKE ? OR modelo LIKE ? OR subject LIKE ?
+            ORDER BY id DESC
+        """, (p, p, p, p))
+    else:
+        cur.execute("""
+            SELECT id, fecha_mail, vin, marca, modelo, subject, filename, created_at
+            FROM diagnosticos
+            ORDER BY id DESC
+        """)
+
+    rows = cur.fetchall()
+    con.close()
+    return render_template("diagnosticos.html", diagnosticos=rows, q=q)
+
+
+@app.route("/diagnosticos/<int:diag_id>/descargar")
+@login_required
+def diagnostico_descargar(diag_id):
+    con = get_con()
+    cur = con.cursor()
+    cur.execute("SELECT filename FROM diagnosticos WHERE id=?", (diag_id,))
+    row = cur.fetchone()
+    con.close()
+
+    if not row:
+        return redirect(url_for("diagnosticos_listado"))
+
+    filename = row[0]
+    folder = os.path.join(app.root_path, "static", "uploads", "diagnosticos")
+    return send_from_directory(folder, filename, as_attachment=True)
 
 
 # =========================
@@ -1844,16 +1892,26 @@ def cita_eliminar(cita_id):
 
 
 # =========================
+# Arranque (carpetas + init_db para gunicorn también)
+# =========================
+def ensure_folders():
+    os.makedirs(os.path.join("static", "uploads"), exist_ok=True)
+    os.makedirs(os.path.join("static", "uploads", "diagnosticos"), exist_ok=True)
+    os.makedirs(BACKUP_FOLDER, exist_ok=True)
+
+# Esto corre cuando gunicorn importa app.py
+try:
+    ensure_folders()
+    init_db()
+except Exception as e:
+    print("Startup init error:", e)
+
+
+# =========================
 # Main
 # =========================
 if __name__ == "__main__":
-    if not os.path.exists("static"):
-        os.mkdir("static")
-    if not os.path.exists(os.path.join("static", "uploads")):
-        os.makedirs(os.path.join("static", "uploads"), exist_ok=True)
-    if not os.path.exists(BACKUP_FOLDER):
-        os.makedirs(BACKUP_FOLDER, exist_ok=True)
-
+    ensure_folders()
     init_db()
     backup_db_if_changed()
     app.run(host="0.0.0.0", port=5000, debug=True)
