@@ -31,11 +31,16 @@ def sha256_bytes(b: bytes) -> str:
     h.update(b)
     return h.hexdigest()
 
-def guess_vin(text: str) -> str | None:
+def guess_vin(text: str):
     if not text:
         return None
     m = VIN_REGEX.search(text.upper())
     return m.group(0) if m else None
+
+def clean_filename(name: str) -> str:
+    name = name or "diagnostico.bin"
+    name = decode_mime(name)
+    return re.sub(r"[^a-zA-Z0-9._-]+", "_", name)
 
 def main():
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
@@ -47,7 +52,7 @@ def main():
     mail.login(GMAIL_USER, GMAIL_APP_PASSWORD)
     mail.select("inbox")
 
-    # buscamos NO LEÍDOS (podés cambiar a filtro por SUBJECT si querés)
+    # Traer solo NO LEÍDOS
     status, data = mail.search(None, "UNSEEN")
     if status != "OK":
         return
@@ -71,30 +76,28 @@ def main():
         from_email = decode_mime(msg.get("From"))
         date_hdr = decode_mime(msg.get("Date"))
 
-        vin = guess_vin(subject)  # primera pasada desde asunto
+        # VIN desde el asunto (si viene)
+        vin = guess_vin(subject)
+
+        saved_any = False
 
         for part in msg.walk():
-            disp = part.get_content_disposition()
-            if disp != "attachment":
+            if part.get_content_disposition() != "attachment":
                 continue
 
-            filename = part.get_filename()
-            filename = decode_mime(filename) if filename else "diagnostico.bin"
-
+            filename = clean_filename(part.get_filename())
             payload = part.get_payload(decode=True) or b""
             if not payload:
                 continue
 
             file_hash = sha256_bytes(payload)
 
-            # dedupe: si existe, no lo guardamos
+            # Evitar duplicados
             cur.execute("SELECT id FROM diagnosticos WHERE sha256=?", (file_hash,))
             if cur.fetchone():
                 continue
 
-            # nombre único
-            safe_name = re.sub(r"[^a-zA-Z0-9._-]+", "_", filename)
-            unique = f"autel_{int(datetime.now().timestamp())}_{safe_name}"
+            unique = f"autel_{int(datetime.now().timestamp())}_{filename}"
             filepath = os.path.join(SAVE_DIR, unique)
 
             with open(filepath, "wb") as f:
@@ -104,11 +107,15 @@ def main():
 
             cur.execute("""
                 INSERT INTO diagnosticos
-                (fecha_mail, from_email, subject, filename, filepath, vin, marca, modelo, created_at, sha256)
-                VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
-            """, (date_hdr, from_email, subject, unique, filepath, vin, created_at, file_hash))
-
+                (fecha_mail, from_email, subject, filename, vin, marca, modelo, created_at, sha256)
+                VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+            """, (date_hdr, from_email, subject, unique, vin, created_at, file_hash))
             con.commit()
+            saved_any = True
+
+        # Si guardó algo, marcamos el mail como leído
+        if saved_any:
+            mail.store(msg_id, '+FLAGS', '\\Seen')
 
     con.close()
     mail.logout()
