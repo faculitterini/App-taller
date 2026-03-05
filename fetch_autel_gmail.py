@@ -5,8 +5,8 @@ from datetime import datetime
 DB_NAME = "database.db"
 SAVE_DIR = os.path.join("static", "uploads", "diagnosticos")
 
-GMAIL_USER = os.environ.get("AUTEL_GMAIL_USER", "")
-GMAIL_APP_PASSWORD = os.environ.get("AUTEL_GMAIL_APP_PASSWORD", "")
+GMAIL_USER = "doccar.arg@gmail.com"
+GMAIL_APP_PASSWORD = "zrdn lysz xwqd dhkd"
 
 VIN_REGEX = re.compile(r"\b[A-HJ-NPR-Z0-9]{17}\b")
 
