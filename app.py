@@ -786,14 +786,15 @@ def vehiculo_nuevo(cliente_id):
         modelo = request.form.get("modelo", "").strip()
         anio = request.form.get("anio", "").strip()
         km = request.form.get("km", "").strip()
+        vin = request.form.get("vin", "").strip().upper()
         notas = request.form.get("notas", "").strip()
 
         con = get_con()
         cur = con.cursor()
         cur.execute("""
-            INSERT INTO vehiculos (cliente_id, patente, marca, modelo, anio, km, notas)
+            INSERT INTO vehiculos (cliente_id, patente, marca, modelo, anio, km, vin, notas)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (cliente_id, patente, marca, modelo, anio, km, notas))
+        """, (cliente_id, patente, marca, modelo, anio, km, vin, notas))
         con.commit()
         con.close()
 
