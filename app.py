@@ -792,8 +792,8 @@ def vehiculo_nuevo(cliente_id):
         con = get_con()
         cur = con.cursor()
         cur.execute("""
-            INSERT INTO vehiculos (cliente_id, patente, marca, modelo, anio, km, vin, notas)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO vehiculos (cliente_id, patente, marca, modelo, anio, km, vin, notas)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (cliente_id, patente, marca, modelo, anio, km, vin, notas))
         con.commit()
         con.close()
