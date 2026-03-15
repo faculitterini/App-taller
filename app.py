@@ -27,12 +27,12 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB
 
-# Estados permitidos (solo estos)
+# Estados permitidos
 ESTADOS = ["Presupuesto", "Ingresado", "Entregado", "Facturado"]
 
 
 # =========================
-# Helpers
+# Helpers generales
 # =========================
 def get_con():
     con = sqlite3.connect(DB_NAME)
@@ -45,7 +45,6 @@ def allowed_file(filename):
 
 
 def normalizar_telefono(raw):
-    """Deja sólo dígitos en el teléfono."""
     if not raw:
         return None
     return re.sub(r"\D", "", raw)
@@ -57,6 +56,456 @@ def file_sha256(path: str) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def limpiar_vin(vin: str) -> str:
+    if not vin:
+        return ""
+    return re.sub(r"[^A-Z0-9]", "", str(vin).upper().strip())
+
+
+def limpiar_texto_corto(txt: str) -> str:
+    return (txt or "").strip()
+
+
+def limpiar_marca_modelo(txt: str) -> str:
+    return (txt or "").strip()
+
+
+def parsear_km(valor):
+    """
+    Convierte cosas como:
+    '203508', '203.508', '203508km', '203 508 KM'
+    a int(203508)
+    """
+    if valor is None:
+        return None
+
+    s = str(valor).strip().lower()
+    if not s:
+        return None
+
+    s = s.replace("km", "")
+    s = re.sub(r"[^\d]", "", s)
+
+    if not s:
+        return None
+
+    try:
+        return int(s)
+    except Exception:
+        return None
+
+
+def km_a_texto(km):
+    if km is None:
+        return ""
+    try:
+        return str(int(km))
+    except Exception:
+        return str(km).strip()
+
+
+def parsear_fecha_texto(txt):
+    """
+    Intenta convertir textos comunes a YYYY-MM-DD.
+    Si no puede, devuelve hoy.
+    """
+    if not txt:
+        return date.today().isoformat()
+
+    txt = str(txt).strip()
+
+    formatos = [
+        "%Y-%m-%d",
+        "%Y/%m/%d",
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y/%m/%d %H:%M:%S",
+        "%d/%m/%Y %H:%M:%S",
+        "%d-%m-%Y %H:%M:%S",
+    ]
+
+    for fmt in formatos:
+        try:
+            return datetime.strptime(txt, fmt).date().isoformat()
+        except Exception:
+            pass
+
+    # intenta detectar YYYY-MM-DD dentro del string
+    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", txt)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+
+    # intenta detectar DD/MM/YYYY
+    m = re.search(r"(\d{2})/(\d{2})/(\d{4})", txt)
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+
+    return date.today().isoformat()
+
+
+# =========================
+# Helpers AUTEL / Diagnósticos
+# =========================
+def obtener_diagnostico(cur, diag_id):
+    cur.execute("SELECT * FROM diagnosticos WHERE id=?", (diag_id,))
+    return cur.fetchone()
+
+
+def obtener_vehiculo_por_vin(cur, vin):
+    vin = limpiar_vin(vin)
+    if not vin:
+        return None
+    cur.execute("""
+        SELECT *
+        FROM vehiculos
+        WHERE UPPER(COALESCE(vin,'')) = ?
+        LIMIT 1
+    """, (vin,))
+    return cur.fetchone()
+
+
+def obtener_reparacion_abierta_vehiculo(cur, vehiculo_id):
+    """
+    Toma la última reparación no facturada.
+    """
+    cur.execute("""
+        SELECT *
+        FROM reparaciones
+        WHERE vehiculo_id = ?
+          AND estado IN ('Presupuesto', 'Ingresado', 'Entregado')
+        ORDER BY fecha DESC, id DESC
+        LIMIT 1
+    """, (vehiculo_id,))
+    return cur.fetchone()
+
+
+def registrar_historial_km(cur, vehiculo_id, km, fuente, diagnostico_id=None, reparacion_id=None, fecha=None):
+    km_num = parsear_km(km)
+    if km_num is None:
+        return
+
+    fecha = parsear_fecha_texto(fecha or date.today().isoformat())
+
+    # evitar duplicado exacto muy obvio
+    cur.execute("""
+        SELECT id
+        FROM vehiculo_km_historial
+        WHERE vehiculo_id = ?
+          AND km = ?
+          AND fecha = ?
+          AND COALESCE(fuente,'') = COALESCE(?, '')
+        LIMIT 1
+    """, (vehiculo_id, km_num, fecha, fuente))
+    existe = cur.fetchone()
+    if existe:
+        return
+
+    cur.execute("""
+        INSERT INTO vehiculo_km_historial (
+            vehiculo_id, fecha, km, fuente, diagnostico_id, reparacion_id
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (vehiculo_id, fecha, km_num, fuente, diagnostico_id, reparacion_id))
+
+
+def actualizar_km_vehiculo_si_corresponde(cur, vehiculo_id, km_nuevo, fuente="Diagnóstico", diagnostico_id=None, reparacion_id=None, fecha=None):
+    km_num = parsear_km(km_nuevo)
+    if km_num is None:
+        return False
+
+    cur.execute("SELECT km FROM vehiculos WHERE id=?", (vehiculo_id,))
+    row = cur.fetchone()
+    if not row:
+        return False
+
+    km_actual = parsear_km(row["km"])
+    actualizado = False
+
+    if km_actual is None or km_num >= km_actual:
+        cur.execute("UPDATE vehiculos SET km=? WHERE id=?", (str(km_num), vehiculo_id))
+        actualizado = True
+
+    registrar_historial_km(
+        cur,
+        vehiculo_id=vehiculo_id,
+        km=km_num,
+        fuente=fuente,
+        diagnostico_id=diagnostico_id,
+        reparacion_id=reparacion_id,
+        fecha=fecha
+    )
+
+    return actualizado
+
+
+def actualizar_km_reparacion_si_corresponde(cur, reparacion_id, km_nuevo):
+    km_num = parsear_km(km_nuevo)
+    if km_num is None:
+        return False
+
+    cur.execute("SELECT km FROM reparaciones WHERE id=?", (reparacion_id,))
+    row = cur.fetchone()
+    if not row:
+        return False
+
+    km_actual = parsear_km(row["km"])
+    if km_actual is None or km_num >= km_actual:
+        cur.execute("UPDATE reparaciones SET km=? WHERE id=?", (str(km_num), reparacion_id))
+        return True
+
+    return False
+
+
+def completar_marca_modelo_vehiculo_si_vacio(cur, vehiculo_id, marca=None, modelo=None):
+    cur.execute("SELECT marca, modelo FROM vehiculos WHERE id=?", (vehiculo_id,))
+    veh = cur.fetchone()
+    if not veh:
+        return
+
+    marca_actual = (veh["marca"] or "").strip()
+    modelo_actual = (veh["modelo"] or "").strip()
+
+    nueva_marca = limpiar_marca_modelo(marca)
+    nuevo_modelo = limpiar_marca_modelo(modelo)
+
+    marca_final = marca_actual or nueva_marca
+    modelo_final = modelo_actual or nuevo_modelo
+
+    cur.execute("""
+        UPDATE vehiculos
+        SET marca=?, modelo=?
+        WHERE id=?
+    """, (marca_final, modelo_final, vehiculo_id))
+
+
+def vincular_diagnostico_existente(cur, diagnostico_id, vehiculo_id=None, reparacion_id=None, crear_reparacion=False):
+    """
+    Hace toda la lógica central:
+    - busca vehículo por VIN si no se pasó vehiculo_id
+    - vincula el diagnóstico al vehículo
+    - intenta vincularlo a reparación abierta
+    - opcionalmente crea reparación si no hay
+    - actualiza km de vehículo y reparación
+    """
+    diag = obtener_diagnostico(cur, diagnostico_id)
+    if not diag:
+        return {
+            "ok": False,
+            "msg": "Diagnóstico inexistente."
+        }
+
+    vin = limpiar_vin(diag["vin"])
+    marca = diag["marca"]
+    modelo = diag["modelo"]
+    odometro = parsear_km(diag["odometro"])
+    fecha_diag = parsear_fecha_texto(diag["fecha_mail"] or diag["created_at"] or date.today().isoformat())
+
+    # Si no pasaron vehículo, buscar por VIN
+    vehiculo = None
+    if vehiculo_id:
+        cur.execute("SELECT * FROM vehiculos WHERE id=?", (vehiculo_id,))
+        vehiculo = cur.fetchone()
+    elif vin:
+        vehiculo = obtener_vehiculo_por_vin(cur, vin)
+
+    if not vehiculo:
+        cur.execute("""
+            UPDATE diagnosticos
+            SET vehiculo_id = NULL,
+                reparacion_id = NULL,
+                estado_vinculacion = 'PENDIENTE',
+                vinculado_auto = 0,
+                updated_at = ?
+            WHERE id = ?
+        """, (datetime.now().isoformat(sep=" ", timespec="seconds"), diagnostico_id))
+        return {
+            "ok": False,
+            "msg": "No se encontró vehículo con ese VIN. Queda pendiente para vinculación manual."
+        }
+
+    vehiculo_id_real = vehiculo["id"]
+
+    # completar marca/modelo si el vehículo está vacío
+    completar_marca_modelo_vehiculo_si_vacio(cur, vehiculo_id_real, marca=marca, modelo=modelo)
+
+    # actualizar km del vehículo
+    if odometro is not None:
+        actualizar_km_vehiculo_si_corresponde(
+            cur,
+            vehiculo_id=vehiculo_id_real,
+            km_nuevo=odometro,
+            fuente="Diagnóstico Autel",
+            diagnostico_id=diagnostico_id,
+            reparacion_id=reparacion_id,
+            fecha=fecha_diag
+        )
+
+    reparacion = None
+    if reparacion_id:
+        cur.execute("SELECT * FROM reparaciones WHERE id=?", (reparacion_id,))
+        reparacion = cur.fetchone()
+    else:
+        reparacion = obtener_reparacion_abierta_vehiculo(cur, vehiculo_id_real)
+
+    # crear reparación si fue pedido y no hay abierta
+    if not reparacion and crear_reparacion:
+        descripcion_auto = "Diagnóstico Autel"
+        if marca or modelo:
+            descripcion_auto += f" - {(marca or '').strip()} {(modelo or '').strip()}".strip()
+
+        notas_auto = f"Reparación creada desde diagnóstico Autel #{diagnostico_id}"
+        cur.execute("""
+            INSERT INTO reparaciones (vehiculo_id, fecha, descripcion, notas, estado, km)
+            VALUES (?, ?, ?, ?, 'Ingresado', ?)
+        """, (
+            vehiculo_id_real,
+            fecha_diag,
+            descripcion_auto.strip(),
+            notas_auto,
+            km_a_texto(odometro)
+        ))
+        reparacion_id = cur.lastrowid
+        cur.execute("SELECT * FROM reparaciones WHERE id=?", (reparacion_id,))
+        reparacion = cur.fetchone()
+
+    reparacion_id_final = reparacion["id"] if reparacion else None
+
+    # actualizar km de la reparación vinculada
+    if reparacion_id_final and odometro is not None:
+        actualizar_km_reparacion_si_corresponde(cur, reparacion_id_final, odometro)
+
+    estado_vinculacion = "VINCULADO" if reparacion_id_final else "VEHICULO_ENCONTRADO"
+
+    cur.execute("""
+        UPDATE diagnosticos
+        SET vehiculo_id = ?,
+            reparacion_id = ?,
+            estado_vinculacion = ?,
+            vinculado_auto = ?,
+            updated_at = ?
+        WHERE id = ?
+    """, (
+        vehiculo_id_real,
+        reparacion_id_final,
+        estado_vinculacion,
+        1 if reparacion_id is None else 0,
+        datetime.now().isoformat(sep=" ", timespec="seconds"),
+        diagnostico_id
+    ))
+
+    return {
+        "ok": True,
+        "vehiculo_id": vehiculo_id_real,
+        "reparacion_id": reparacion_id_final,
+        "msg": "Diagnóstico vinculado correctamente." if reparacion_id_final else "Vehículo encontrado. No había reparación abierta, quedó vinculado al vehículo."
+    }
+
+
+def registrar_diagnostico_autel(
+    fecha_mail=None,
+    from_email="",
+    subject="",
+    filename="",
+    vin="",
+    marca="",
+    modelo="",
+    odometro=None,
+    sha256="",
+    intentar_autovinculo=True
+):
+    """
+    Esta función está pensada para ser usada desde tu script fetch_autel_gmail.py
+    cuando entra un mail nuevo.
+
+    Devuelve un dict con info del insert/vinculación.
+    """
+    con = get_con()
+    cur = con.cursor()
+
+    vin = limpiar_vin(vin)
+    marca = limpiar_marca_modelo(marca)
+    modelo = limpiar_marca_modelo(modelo)
+    odometro_num = parsear_km(odometro)
+    fecha_mail_norm = parsear_fecha_texto(fecha_mail or date.today().isoformat())
+    now_txt = datetime.now().isoformat(sep=" ", timespec="seconds")
+
+    # si ya existe por sha256, actualiza datos útiles y vuelve ese id
+    if sha256:
+        cur.execute("SELECT id FROM diagnosticos WHERE sha256=?", (sha256,))
+        existente = cur.fetchone()
+        if existente:
+            diag_id = existente["id"]
+            cur.execute("""
+                UPDATE diagnosticos
+                SET fecha_mail = COALESCE(NULLIF(?, ''), fecha_mail),
+                    from_email = COALESCE(NULLIF(?, ''), from_email),
+                    subject = COALESCE(NULLIF(?, ''), subject),
+                    filename = COALESCE(NULLIF(?, ''), filename),
+                    vin = COALESCE(NULLIF(?, ''), vin),
+                    marca = COALESCE(NULLIF(?, ''), marca),
+                    modelo = COALESCE(NULLIF(?, ''), modelo),
+                    odometro = COALESCE(?, odometro),
+                    updated_at = ?
+                WHERE id = ?
+            """, (
+                fecha_mail_norm,
+                from_email.strip(),
+                subject.strip(),
+                filename.strip(),
+                vin,
+                marca,
+                modelo,
+                odometro_num,
+                now_txt,
+                diag_id
+            ))
+            if intentar_autovinculo:
+                res = vincular_diagnostico_existente(cur, diag_id)
+            else:
+                res = {"ok": True, "msg": "Diagnóstico ya existente, datos actualizados.", "diagnostico_id": diag_id}
+
+            con.commit()
+            con.close()
+            res["diagnostico_id"] = diag_id
+            return res
+
+    cur.execute("""
+        INSERT INTO diagnosticos (
+            fecha_mail, from_email, subject, filename,
+            vin, marca, modelo, odometro,
+            created_at, updated_at, sha256,
+            vehiculo_id, reparacion_id,
+            estado_vinculacion, vinculado_auto
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 'PENDIENTE', 0)
+    """, (
+        fecha_mail_norm,
+        from_email.strip(),
+        subject.strip(),
+        filename.strip(),
+        vin,
+        marca,
+        modelo,
+        odometro_num,
+        now_txt,
+        now_txt,
+        sha256.strip() if sha256 else None
+    ))
+    diag_id = cur.lastrowid
+
+    if intentar_autovinculo:
+        res = vincular_diagnostico_existente(cur, diag_id)
+    else:
+        res = {"ok": True, "msg": "Diagnóstico registrado.", "diagnostico_id": diag_id}
+
+    con.commit()
+    con.close()
+
+    res["diagnostico_id"] = diag_id
+    return res
 
 
 # =========================
@@ -90,8 +539,42 @@ def init_db():
         vin TEXT,
         marca TEXT,
         modelo TEXT,
+        odometro INTEGER,
+        vehiculo_id INTEGER,
+        reparacion_id INTEGER,
+        estado_vinculacion TEXT DEFAULT 'PENDIENTE',
+        vinculado_auto INTEGER DEFAULT 0,
         created_at TEXT,
+        updated_at TEXT,
         sha256 TEXT UNIQUE
+    )
+    """)
+
+    cur.execute("PRAGMA table_info(diagnosticos)")
+    cols = [c[1] for c in cur.fetchall()]
+    if "odometro" not in cols:
+        cur.execute("ALTER TABLE diagnosticos ADD COLUMN odometro INTEGER")
+    if "vehiculo_id" not in cols:
+        cur.execute("ALTER TABLE diagnosticos ADD COLUMN vehiculo_id INTEGER")
+    if "reparacion_id" not in cols:
+        cur.execute("ALTER TABLE diagnosticos ADD COLUMN reparacion_id INTEGER")
+    if "estado_vinculacion" not in cols:
+        cur.execute("ALTER TABLE diagnosticos ADD COLUMN estado_vinculacion TEXT DEFAULT 'PENDIENTE'")
+    if "vinculado_auto" not in cols:
+        cur.execute("ALTER TABLE diagnosticos ADD COLUMN vinculado_auto INTEGER DEFAULT 0")
+    if "updated_at" not in cols:
+        cur.execute("ALTER TABLE diagnosticos ADD COLUMN updated_at TEXT")
+
+    # ---------------- HISTORIAL KM ----------------
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS vehiculo_km_historial (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        vehiculo_id INTEGER NOT NULL,
+        fecha TEXT,
+        km INTEGER,
+        fuente TEXT,
+        diagnostico_id INTEGER,
+        reparacion_id INTEGER
     )
     """)
 
@@ -187,10 +670,8 @@ def init_db():
         cur.execute("ALTER TABLE reparaciones ADD COLUMN estado TEXT")
     if "km" not in cols:
         cur.execute("ALTER TABLE reparaciones ADD COLUMN km TEXT")
-    # default y limpieza de estados viejos
-    cur.execute("UPDATE reparaciones SET estado='Presupuesto' WHERE estado IS NULL OR TRIM(estado)=''")
 
-    # normalizar variantes viejas
+    cur.execute("UPDATE reparaciones SET estado='Presupuesto' WHERE estado IS NULL OR TRIM(estado)=''")
     cur.execute("""
         UPDATE reparaciones
         SET estado='Facturado'
@@ -201,8 +682,6 @@ def init_db():
         SET estado='Entregado'
         WHERE estado IN ('Terminado','TERMINADO','Entregada','ENTREGADA')
     """)
-
-    # cualquier estado viejo no permitido -> Presupuesto
     cur.execute("""
         UPDATE reparaciones
         SET estado='Presupuesto'
@@ -334,6 +813,13 @@ def init_db():
 
     cur.execute("UPDATE gastos SET pagado = 0 WHERE pagado IS NULL")
 
+    # índices útiles
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_vehiculos_vin ON vehiculos(vin)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_diagnosticos_vin ON diagnosticos(vin)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_diagnosticos_reparacion ON diagnosticos(reparacion_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_diagnosticos_vehiculo ON diagnosticos(vehiculo_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_km_historial_vehiculo ON vehiculo_km_historial(vehiculo_id)")
+
     con.commit()
     con.close()
 
@@ -344,7 +830,7 @@ def init_db():
 def backup_db_if_changed():
     """
     Genera 1 solo backup: backups/backup_latest.db
-    Sólo lo actualiza si el DB cambió (hash distinto).
+    Sólo lo actualiza si el DB cambió.
     """
     if not os.path.exists(BACKUP_FOLDER):
         os.makedirs(BACKUP_FOLDER, exist_ok=True)
@@ -405,23 +891,51 @@ def diagnosticos_listado():
     con = get_con()
     cur = con.cursor()
 
+    sql = """
+        SELECT
+            d.id,
+            d.fecha_mail,
+            d.vin,
+            d.marca,
+            d.modelo,
+            d.odometro,
+            d.subject,
+            d.filename,
+            d.created_at,
+            d.vehiculo_id,
+            d.reparacion_id,
+            d.estado_vinculacion,
+            v.patente,
+            v.marca AS veh_marca,
+            v.modelo AS veh_modelo,
+            r.estado AS reparacion_estado
+        FROM diagnosticos d
+        LEFT JOIN vehiculos v ON v.id = d.vehiculo_id
+        LEFT JOIN reparaciones r ON r.id = d.reparacion_id
+        WHERE 1=1
+    """
+    params = []
+
     if q:
         p = f"%{q}%"
-        cur.execute("""
-            SELECT id, fecha_mail, vin, marca, modelo, subject, filename, created_at
-            FROM diagnosticos
-            WHERE vin LIKE ? OR marca LIKE ? OR modelo LIKE ? OR subject LIKE ?
-            ORDER BY id DESC
-        """, (p, p, p, p))
-    else:
-        cur.execute("""
-            SELECT id, fecha_mail, vin, marca, modelo, subject, filename, created_at
-            FROM diagnosticos
-            ORDER BY id DESC
-        """)
+        sql += """
+            AND (
+                d.vin LIKE ? OR
+                d.marca LIKE ? OR
+                d.modelo LIKE ? OR
+                d.subject LIKE ? OR
+                d.filename LIKE ? OR
+                v.patente LIKE ?
+            )
+        """
+        params.extend([p, p, p, p, p, p])
 
+    sql += " ORDER BY d.id DESC"
+
+    cur.execute(sql, params)
     rows = cur.fetchall()
     con.close()
+
     return render_template("diagnosticos.html", diagnosticos=rows, q=q)
 
 
@@ -435,10 +949,79 @@ def diagnostico_descargar(diag_id):
     con.close()
 
     if not row:
+        flash("Diagnóstico no encontrado.", "warning")
         return redirect(url_for("diagnosticos_listado"))
 
-    filename = row[0]
+    filename = row["filename"]
     return send_from_directory(UPLOAD_DIAG_FOLDER, filename, as_attachment=True)
+
+
+@app.route("/diagnosticos/<int:diag_id>/autovincular", methods=["POST"])
+@login_required
+def diagnostico_autovincular(diag_id):
+    con = get_con()
+    cur = con.cursor()
+
+    res = vincular_diagnostico_existente(cur, diag_id, vehiculo_id=None, reparacion_id=None, crear_reparacion=False)
+    con.commit()
+    con.close()
+
+    flash(res["msg"], "success" if res["ok"] else "warning")
+    backup_db_if_changed()
+    return redirect(request.referrer or url_for("diagnosticos_listado"))
+
+
+@app.route("/diagnosticos/<int:diag_id>/crear_reparacion", methods=["POST"])
+@login_required
+def diagnostico_crear_reparacion(diag_id):
+    con = get_con()
+    cur = con.cursor()
+
+    res = vincular_diagnostico_existente(cur, diag_id, vehiculo_id=None, reparacion_id=None, crear_reparacion=True)
+    con.commit()
+    con.close()
+
+    backup_db_if_changed()
+
+    if res["ok"] and res.get("reparacion_id"):
+        flash("Reparación creada y diagnóstico vinculado.", "success")
+        return redirect(url_for("reparacion_detalle", reparacion_id=res["reparacion_id"]))
+
+    flash(res["msg"], "warning")
+    return redirect(request.referrer or url_for("diagnosticos_listado"))
+
+
+@app.route("/diagnosticos/<int:diag_id>/vincular_manual", methods=["POST"])
+@login_required
+def diagnostico_vincular_manual(diag_id):
+    vehiculo_id = request.form.get("vehiculo_id", "").strip()
+    reparacion_id = request.form.get("reparacion_id", "").strip()
+    crear_reparacion = request.form.get("crear_reparacion") == "1"
+
+    vehiculo_id = int(vehiculo_id) if vehiculo_id.isdigit() else None
+    reparacion_id = int(reparacion_id) if reparacion_id.isdigit() else None
+
+    con = get_con()
+    cur = con.cursor()
+
+    res = vincular_diagnostico_existente(
+        cur,
+        diag_id,
+        vehiculo_id=vehiculo_id,
+        reparacion_id=reparacion_id,
+        crear_reparacion=crear_reparacion
+    )
+    con.commit()
+    con.close()
+
+    backup_db_if_changed()
+
+    if res["ok"] and res.get("reparacion_id"):
+        flash("Diagnóstico vinculado correctamente.", "success")
+        return redirect(url_for("reparacion_detalle", reparacion_id=res["reparacion_id"]))
+
+    flash(res["msg"], "success" if res["ok"] else "warning")
+    return redirect(request.referrer or url_for("diagnosticos_listado"))
 
 
 # =========================
@@ -453,7 +1036,7 @@ def dashboard():
     hoy = date.today().isoformat()
     desde_7 = (date.today() - timedelta(days=6)).isoformat()
 
-    # Reparaciones visibles en dashboard (NO Presupuesto, NO Facturado)
+    # Reparaciones visibles
     cur.execute("""
         SELECT 
             r.id, r.fecha, r.estado, r.descripcion,
@@ -510,7 +1093,15 @@ def dashboard():
     cur.execute("SELECT COUNT(*) FROM reparaciones WHERE fecha=? AND estado='Ingresado'", (hoy,))
     reparaciones_hoy = cur.fetchone()[0] or 0
 
-    # Ingresos últimos 7 días (solo facturas reales)
+    # Diagnósticos pendientes de vinculación
+    cur.execute("""
+        SELECT COUNT(*)
+        FROM diagnosticos
+        WHERE COALESCE(estado_vinculacion, 'PENDIENTE') <> 'VINCULADO'
+    """)
+    diagnosticos_pendientes = cur.fetchone()[0] or 0
+
+    # Ingresos últimos 7 días
     cur.execute("""
         SELECT COALESCE(SUM(COALESCE(total_servicios,total)),0)
         FROM facturas
@@ -596,6 +1187,7 @@ def dashboard():
         balance_7=balance_7,
         gastos_pendientes=gastos_pendientes,
         total_gastos_pendientes=total_gastos_pendientes,
+        diagnosticos_pendientes=diagnosticos_pendientes,
         last_backup_dt=last_backup_dt,
         pendientes_cobro=pendientes_cobro,
         labels=labels,
@@ -694,9 +1286,9 @@ def clientes():
                OR apellido LIKE ?
                OR telefono LIKE ?
                OR email LIKE ?
-               OR id IN (SELECT cliente_id FROM vehiculos WHERE patente LIKE ?)
+               OR id IN (SELECT cliente_id FROM vehiculos WHERE patente LIKE ? OR vin LIKE ?)
             ORDER BY apellido, nombre
-        """, (patron, patron, patron, patron, patron))
+        """, (patron, patron, patron, patron, patron, patron))
     else:
         cur.execute("SELECT * FROM clientes ORDER BY apellido, nombre")
 
@@ -789,7 +1381,7 @@ def cliente_eliminar(id):
 
 
 # =========================
-# Vehiculos
+# Vehículos
 # =========================
 @app.route("/clientes/<int:cliente_id>/vehiculos")
 @login_required
@@ -822,7 +1414,7 @@ def vehiculo_nuevo(cliente_id):
         modelo = request.form.get("modelo", "").strip()
         anio = request.form.get("anio", "").strip()
         km = request.form.get("km", "").strip()
-        vin = request.form.get("vin", "").strip().upper()
+        vin = limpiar_vin(request.form.get("vin", ""))
         notas = request.form.get("notas", "").strip()
 
         con = get_con()
@@ -862,7 +1454,7 @@ def vehiculo_editar(id):
         modelo = request.form.get("modelo", "").strip()
         anio = request.form.get("anio", "").strip()
         km = request.form.get("km", "").strip()
-        vin = request.form.get("vin", "").strip().upper()
+        vin = limpiar_vin(request.form.get("vin", ""))
         notas = request.form.get("notas", "").strip()
 
         cur.execute("""
@@ -983,19 +1575,16 @@ def reparacion_nueva(vehiculo_id):
 
         reparacion_id = cur.lastrowid
 
-        # Actualizar km actual del vehículo si el nuevo km es mayor
-        try:
-            km_limpio = str(km).strip().replace(".", "").replace(",", "").replace(" ", "")
-            km_num = int(km_limpio) if km_limpio else None
-
-            veh_km_raw = vehiculo["km"] or ""
-            veh_km_limpio = str(veh_km_raw).strip().replace(".", "").replace(",", "").replace(" ", "")
-            veh_km_num = int(veh_km_limpio) if veh_km_limpio.isdigit() else None
-
-            if km_num is not None and (veh_km_num is None or km_num >= veh_km_num):
-                cur.execute("UPDATE vehiculos SET km=? WHERE id=?", (str(km_num), vehiculo_id))
-        except Exception:
-            pass
+        km_num = parsear_km(km)
+        if km_num is not None:
+            actualizar_km_vehiculo_si_corresponde(
+                cur,
+                vehiculo_id=vehiculo_id,
+                km_nuevo=km_num,
+                fuente="Carga manual reparación",
+                reparacion_id=reparacion_id,
+                fecha=fecha
+            )
 
         con.commit()
         con.close()
@@ -1047,14 +1636,16 @@ def reparacion_editar(reparacion_id):
             WHERE id=?
         """, (fecha, descripcion, notas, estado, km, reparacion_id))
 
-        try:
-            km_num = int(km) if km else None
-            veh_km_num = int(vehiculo["km"]) if vehiculo["km"] and str(vehiculo["km"]).isdigit() else None
-
-            if km_num is not None and (veh_km_num is None or km_num > veh_km_num):
-                cur.execute("UPDATE vehiculos SET km=? WHERE id=?", (km, vehiculo_id))
-        except:
-            pass
+        km_num = parsear_km(km)
+        if km_num is not None:
+            actualizar_km_vehiculo_si_corresponde(
+                cur,
+                vehiculo_id=vehiculo_id,
+                km_nuevo=km_num,
+                fuente="Edición reparación",
+                reparacion_id=reparacion_id,
+                fecha=fecha
+            )
 
         con.commit()
         con.close()
@@ -1090,6 +1681,7 @@ def reparacion_eliminar(reparacion_id):
     cur.execute("DELETE FROM reparacion_imagenes WHERE reparacion_id=?", (reparacion_id,))
     cur.execute("DELETE FROM facturas WHERE reparacion_id=?", (reparacion_id,))
     cur.execute("DELETE FROM gastos WHERE reparacion_id=?", (reparacion_id,))
+    cur.execute("UPDATE diagnosticos SET reparacion_id=NULL WHERE reparacion_id=?", (reparacion_id,))
     cur.execute("DELETE FROM reparaciones WHERE id=?", (reparacion_id,))
     con.commit()
     con.close()
@@ -1128,6 +1720,15 @@ def reparacion_detalle(reparacion_id):
     """, (reparacion_id,))
     imagenes = cur.fetchall()
 
+    # diagnósticos vinculados a esta reparación
+    cur.execute("""
+        SELECT id, fecha_mail, vin, marca, modelo, odometro, filename, subject
+        FROM diagnosticos
+        WHERE reparacion_id = ?
+        ORDER BY id DESC
+    """, (reparacion_id,))
+    diagnosticos = cur.fetchall()
+
     total = 0
     for it in items:
         cantidad = it["cantidad"] or 0
@@ -1145,7 +1746,8 @@ def reparacion_detalle(reparacion_id):
         reparacion=reparacion,
         items=items,
         total=total,
-        imagenes=imagenes
+        imagenes=imagenes,
+        diagnosticos=diagnosticos
     )
 
 
@@ -1388,7 +1990,7 @@ def item_concepto_eliminar(concepto_id):
 
 
 # =========================
-# Imagenes
+# Imágenes
 # =========================
 @app.route("/reparaciones/<int:reparacion_id>/imagenes/nueva", methods=["GET", "POST"])
 @login_required
@@ -1409,16 +2011,16 @@ def reparacion_imagen_nueva(reparacion_id):
         for file in files:
             if file and allowed_file(file.filename):
                 filename = secure_filename(file.filename or "")
-            if not filename:
-                continue
+                if not filename:
+                    continue
 
-            ext = filename.rsplit(".", 1)[1].lower() if "." in filename else ""
-            unique_name = f"rep_{reparacion_id}_{int(time.time()*1000)}.{ext}"
-            save_path = os.path.join(app.config["UPLOAD_FOLDER"], unique_name)
+                ext = filename.rsplit(".", 1)[1].lower() if "." in filename else ""
+                unique_name = f"rep_{reparacion_id}_{int(time.time()*1000)}.{ext}"
+                save_path = os.path.join(app.config["UPLOAD_FOLDER"], unique_name)
 
-            file.save(save_path)
+                file.save(save_path)
 
-            cur.execute("""
+                cur.execute("""
                     INSERT INTO reparacion_imagenes (reparacion_id, filename, descripcion)
                     VALUES (?, ?, ?)
                 """, (reparacion_id, unique_name, descripcion))

@@ -1,178 +1,269 @@
-import os, re, sqlite3, hashlib, email
+import os
+import re
 import imaplib
+import email
 from email.header import decode_header
 from datetime import datetime
-from pypdf import PdfReader  # pip install pypdf
+from pathlib import Path
 
-DB_NAME = "database.db"
-SAVE_DIR = os.path.join("static", "uploads", "diagnosticos")
+from app import registrar_diagnostico_autel, UPLOAD_DIAG_FOLDER, file_sha256
 
-GMAIL_USER = "doccar.arg@gmail.com"
-GMAIL_APP_PASSWORD = "zrdn lysz xwqd dhkd"
+# =========================================
+# CONFIG
+# =========================================
+IMAP_HOST = os.getenv("AUTEL_IMAP_HOST", "imap.gmail.com")
+IMAP_PORT = int(os.getenv("AUTEL_IMAP_PORT", "993"))
+IMAP_USER = os.getenv("AUTEL_IMAP_USER", "doccar.arg@gmail.com")
+IMAP_PASS = os.getenv("AUTEL_IMAP_PASS", "")
+MAILBOX = os.getenv("AUTEL_IMAP_MAILBOX", "INBOX")
 
-VIN_REGEX = re.compile(r"\b[A-HJ-NPR-Z0-9]{17}\b")
-VIN_LABEL_REGEX = re.compile(r"VIN:\s*([A-HJ-NPR-Z0-9]{17})", re.IGNORECASE)
-LINEA_VEHICULO_REGEX = re.compile(r"\b(19\d{2}|20\d{2})\s*/\s*([A-Za-z0-9 _-]+)\s*/\s*([A-Za-z0-9 _-]+)", re.IGNORECASE)
+# filtro simple
+SUBJECT_KEYWORDS = [
+    "autel",
+    "diagnóstico",
+    "diagnostico",
+    "vehicle diagnostic",
+    "maxi",
+    "informe"
+]
 
-def db_con():
-    return sqlite3.connect(DB_NAME)
-
-def decode_mime(s):
+# =========================================
+# HELPERS MAIL
+# =========================================
+def decode_mime_words(s):
     if not s:
         return ""
     parts = decode_header(s)
-    out = ""
-    for text, enc in parts:
-        if isinstance(text, bytes):
-            out += text.decode(enc or "utf-8", errors="ignore")
+    out = []
+    for value, enc in parts:
+        if isinstance(value, bytes):
+            out.append(value.decode(enc or "utf-8", errors="replace"))
         else:
-            out += text
-    return out
+            out.append(value)
+    return "".join(out)
 
-def sha256_bytes(b: bytes) -> str:
-    h = hashlib.sha256()
-    h.update(b)
-    return h.hexdigest()
 
-def guess_vin(text: str):
-    if not text:
-        return None
-    m = VIN_REGEX.search(text.upper())
-    return m.group(0) if m else None
+def sanitize_filename(name: str) -> str:
+    name = (name or "").strip()
+    name = os.path.basename(name)
+    name = re.sub(r"[^A-Za-z0-9._-]", "_", name)
+    return name or f"adjunto_{int(datetime.now().timestamp())}.pdf"
 
-def clean_filename(name: str) -> str:
-    name = name or "diagnostico.bin"
-    name = decode_mime(name)
-    return re.sub(r"[^a-zA-Z0-9._-]+", "_", name)
 
-def extract_from_pdf(pdf_path: str):
+# =========================================
+# HELPERS PDF TEXTO
+# =========================================
+def extraer_texto_pdf(pdffile):
     """
-    Devuelve (vin, marca, modelo) si los encuentra dentro del PDF Autel.
+    Intenta con pdftotext del sistema.
+    Si no está, devuelve texto vacío.
     """
+    import subprocess
+
     try:
-        reader = PdfReader(pdf_path)
-        text = ""
-        for page in reader.pages:
-            text += (page.extract_text() or "") + "\n"
-        up = text.upper()
-
-        # VIN (mejor con etiqueta)
-        m = VIN_LABEL_REGEX.search(up)
-        vin = m.group(1) if m else guess_vin(up)
-
-        # Marca / Modelo: suele venir como "2009/Citroen/C4/ew10"
-        # Busco una línea con AAAA/Marca/Modelo
-        marca = None
-        modelo = None
-
-        # Caso 1: formato con slash
-        # Ej: "2009/Citroen/C4/ew10"
-        for line in text.splitlines():
-            if "/" in line and "CITROEN" in line.upper():
-                # intento extraer marca y modelo por split
-                parts = [p.strip() for p in line.split("/") if p.strip()]
-                if len(parts) >= 3 and parts[0].isdigit():
-                    marca = parts[1]
-                    modelo = parts[2]
-                    break
-
-        # Caso 2: formato con espacios y slashes
-        if not marca or not modelo:
-            m2 = LINEA_VEHICULO_REGEX.search(text)
-            if m2:
-                marca = m2.group(2).strip()
-                modelo = m2.group(3).strip()
-
-        return vin, marca, modelo
-
+        result = subprocess.run(
+            ["pdftotext", pdffile, "-"],
+            capture_output=True,
+            text=True,
+            timeout=20
+        )
+        if result.returncode == 0:
+            return result.stdout or ""
     except Exception:
-        return None, None, None
+        pass
 
-def main():
-    os.makedirs(SAVE_DIR, exist_ok=True)
+    return ""
 
-    mail = imaplib.IMAP4_SSL("imap.gmail.com")
-    mail.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-    mail.select("inbox")
 
-    # Traer solo NO LEÍDOS
-    status, data = mail.search(None, "UNSEEN")
-    if status != "OK":
+def extraer_vin(texto: str) -> str:
+    if not texto:
+        return ""
+    # VIN suele tener 17 chars
+    m = re.search(r"\bVIN[:\s\-]*([A-HJ-NPR-Z0-9]{17})\b", texto, re.IGNORECASE)
+    if m:
+        return m.group(1).upper()
+    return ""
+
+
+def extraer_odometro(texto: str):
+    if not texto:
+        return None
+
+    patrones = [
+        r"Lectura del od[oó]metro[:\s\-]*([0-9\.\,\s]+)\s*km",
+        r"Odometer[:\s\-]*([0-9\.\,\s]+)\s*km",
+        r"Kilometraje[:\s\-]*([0-9\.\,\s]+)\s*km",
+    ]
+
+    for patron in patrones:
+        m = re.search(patron, texto, re.IGNORECASE)
+        if m:
+            bruto = m.group(1)
+            limpio = re.sub(r"[^\d]", "", bruto)
+            if limpio.isdigit():
+                return int(limpio)
+
+    return None
+
+
+def extraer_marca_modelo(texto: str):
+    """
+    Busca la línea típica del Autel:
+    2013 MY(Model Year) Ford Informe de diagnóstico de vehículo
+    y/o:
+    2013 MY(Model Year)/Ford/Fiesta/
+    """
+    marca = ""
+    modelo = ""
+
+    if not texto:
+        return marca, modelo
+
+    # caso 1: 2013 MY(Model Year)/Ford/Fiesta/
+    m = re.search(
+        r"MY\(Model Year\)\s*/\s*([A-Za-z0-9\-]+)\s*/\s*([A-Za-z0-9\-\s]+)\s*/",
+        texto,
+        re.IGNORECASE
+    )
+    if m:
+        marca = m.group(1).strip()
+        modelo = m.group(2).strip()
+        return marca, modelo
+
+    # caso 2: 2013 MY(Model Year) Ford Informe...
+    m = re.search(
+        r"MY\(Model Year\)\)\s*([A-Za-z0-9\-]+)\s+Informe",
+        texto,
+        re.IGNORECASE
+    )
+    if m:
+        marca = m.group(1).strip()
+
+    return marca, modelo
+
+
+def extraer_datos_autel_desde_pdf(pdf_path):
+    texto = extraer_texto_pdf(pdf_path)
+
+    vin = extraer_vin(texto)
+    odometro = extraer_odometro(texto)
+    marca, modelo = extraer_marca_modelo(texto)
+
+    return {
+        "texto": texto,
+        "vin": vin,
+        "odometro": odometro,
+        "marca": marca,
+        "modelo": modelo
+    }
+
+
+# =========================================
+# IMAP
+# =========================================
+def conectar_imap():
+    mail = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
+    mail.login(IMAP_USER, IMAP_PASS)
+    mail.select(MAILBOX)
+    return mail
+
+
+def buscar_mails_no_leidos(mail):
+    typ, data = mail.search(None, '(UNSEEN)')
+    if typ != "OK":
+        return []
+    return data[0].split()
+
+
+def subject_parece_autel(subject: str):
+    s = (subject or "").lower()
+    return any(k in s for k in SUBJECT_KEYWORDS)
+
+
+def procesar_mail(mail, msg_id):
+    typ, data = mail.fetch(msg_id, "(RFC822)")
+    if typ != "OK":
         return
 
-    ids = data[0].split()
-    if not ids:
+    raw = data[0][1]
+    msg = email.message_from_bytes(raw)
+
+    subject = decode_mime_words(msg.get("Subject", ""))
+    from_email = decode_mime_words(msg.get("From", ""))
+    fecha_mail = decode_mime_words(msg.get("Date", ""))
+
+    if not subject_parece_autel(subject):
         return
 
-    con = db_con()
-    cur = con.cursor()
+    for part in msg.walk():
+        content_disposition = str(part.get("Content-Disposition", ""))
+        filename = part.get_filename()
 
-    for msg_id in ids:
-        status, msg_data = mail.fetch(msg_id, "(RFC822)")
-        if status != "OK":
+        if not filename:
             continue
 
-        raw = msg_data[0][1]
-        msg = email.message_from_bytes(raw)
+        filename_decoded = decode_mime_words(filename)
+        filename_decoded = sanitize_filename(filename_decoded)
 
-        subject = decode_mime(msg.get("Subject"))
-        from_email = decode_mime(msg.get("From"))
-        date_hdr = decode_mime(msg.get("Date"))
+        if not filename_decoded.lower().endswith(".pdf"):
+            continue
 
-        # fallback VIN desde asunto
-        vin_fallback = guess_vin(subject)
+        if "attachment" not in content_disposition.lower():
+            continue
 
-        saved_any = False
+        payload = part.get_payload(decode=True)
+        if not payload:
+            continue
 
-        for part in msg.walk():
-            if part.get_content_disposition() != "attachment":
-                continue
+        Path(UPLOAD_DIAG_FOLDER).mkdir(parents=True, exist_ok=True)
 
-            filename = clean_filename(part.get_filename())
-            payload = part.get_payload(decode=True) or b""
-            if not payload:
-                continue
+        unique_name = f"autel_{int(datetime.now().timestamp())}_{filename_decoded}"
+        save_path = os.path.join(UPLOAD_DIAG_FOLDER, unique_name)
 
-            file_hash = sha256_bytes(payload)
+        with open(save_path, "wb") as f:
+            f.write(payload)
 
-            # Evitar duplicados
-            cur.execute("SELECT id FROM diagnosticos WHERE sha256=?", (file_hash,))
-            if cur.fetchone():
-                continue
+        sha = file_sha256(save_path)
+        datos = extraer_datos_autel_desde_pdf(save_path)
 
-            unique = f"autel_{int(datetime.now().timestamp())}_{filename}"
-            filepath = os.path.join(SAVE_DIR, unique)
+        res = registrar_diagnostico_autel(
+            fecha_mail=fecha_mail,
+            from_email=from_email,
+            subject=subject,
+            filename=unique_name,
+            vin=datos["vin"],
+            marca=datos["marca"],
+            modelo=datos["modelo"],
+            odometro=datos["odometro"],
+            sha256=sha,
+            intentar_autovinculo=True
+        )
 
-            with open(filepath, "wb") as f:
-                f.write(payload)
+        print("Diagnóstico procesado:", res)
 
-            created_at = datetime.now().isoformat(timespec="seconds")
 
-            vin = vin_fallback
-            marca = None
-            modelo = None
+def main():
+    if not IMAP_PASS:
+        print("Falta AUTEL_IMAP_PASS en variables de entorno.")
+        return
 
-            # Si es PDF, sacar datos del PDF
-            if unique.lower().endswith(".pdf"):
-                vin_pdf, marca_pdf, modelo_pdf = extract_from_pdf(filepath)
-                vin = vin_pdf or vin
-                marca = marca_pdf
-                modelo = modelo_pdf
+    mail = conectar_imap()
+    ids = buscar_mails_no_leidos(mail)
 
-            cur.execute("""
-                INSERT INTO diagnosticos
-                (fecha_mail, from_email, subject, filename, vin, marca, modelo, created_at, sha256)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (date_hdr, from_email, subject, unique, vin, marca, modelo, created_at, file_hash))
+    print(f"Mails sin leer: {len(ids)}")
 
-            con.commit()
-            saved_any = True
+    for msg_id in ids:
+        try:
+            procesar_mail(mail, msg_id)
+        except Exception as e:
+            print("Error procesando mail", msg_id, "->", e)
 
-        if saved_any:
-            mail.store(msg_id, '+FLAGS', '\\Seen')
-
-    con.close()
+    try:
+        mail.close()
+    except Exception:
+        pass
     mail.logout()
+
 
 if __name__ == "__main__":
     main()
