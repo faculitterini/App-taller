@@ -133,45 +133,64 @@
                             </form>
 
                             <details class="w-100 mt-1">
-                                <summary class="btn btn-sm btn-outline-light w-100">
-                                    Vincular manual
-                                </summary>
+    <summary class="btn btn-sm btn-outline-light w-100">
+        Vincular manual
+    </summary>
 
-                                <form method="post"
-                                      action="{{ url_for('diagnostico_vincular_manual', diag_id=d['id']) }}"
-                                      class="mt-2 p-2 border rounded">
-                                    <div class="mb-2">
-                                        <label class="form-label small">ID vehículo</label>
-                                        <input type="number"
-                                               name="vehiculo_id"
-                                               class="form-control form-control-sm"
-                                               placeholder="Ej: 12">
-                                    </div>
+    <form method="post"
+          action="{{ url_for('diagnostico_vincular_manual', diag_id=d['id']) }}"
+          class="mt-2 p-2 border rounded diagnostico-manual-form">
+        
+        <div class="mb-2">
+            <label class="form-label small">Matrícula / patente</label>
 
-                                    <div class="mb-2">
-                                        <label class="form-label small">ID reparación</label>
-                                        <input type="number"
-                                               name="reparacion_id"
-                                               class="form-control form-control-sm"
-                                               placeholder="Opcional">
-                                    </div>
+            <input type="text"
+                   class="form-control form-control-sm patente-buscador"
+                   list="vehiculos-lista-{{ d['id'] }}"
+                   placeholder="Escribí la patente..."
+                   autocomplete="off">
 
-                                    <div class="form-check mb-2">
-                                        <input class="form-check-input"
-                                               type="checkbox"
-                                               value="1"
-                                               name="crear_reparacion"
-                                               id="crear_rep_{{ d['id'] }}">
-                                        <label class="form-check-label small" for="crear_rep_{{ d['id'] }}">
-                                            Crear reparación si no existe
-                                        </label>
-                                    </div>
+            <datalist id="vehiculos-lista-{{ d['id'] }}">
+                {% for v in vehiculos_lookup %}
+                    <option
+                        value="{{ v['patente'] or '' }}"
+                        data-id="{{ v['id'] }}"
+                        label="{{ (v['patente'] or '-') ~ ' - ' ~ (v['marca'] or '') ~ ' ' ~ (v['modelo'] or '') ~ (' | VIN: ' ~ v['vin'] if v['vin'] else '') }}">
+                    </option>
+                {% endfor %}
+            </datalist>
 
-                                    <button class="btn btn-sm btn-outline-primary w-100">
-                                        Guardar vínculo
-                                    </button>
-                                </form>
-                            </details>
+            <input type="hidden" name="vehiculo_id" class="vehiculo-id-hidden">
+
+            <div class="form-text small">
+                Elegí una patente cargada en el sistema.
+            </div>
+        </div>
+
+        <div class="mb-2">
+            <label class="form-label small">ID reparación</label>
+            <input type="number"
+                   name="reparacion_id"
+                   class="form-control form-control-sm"
+                   placeholder="Opcional">
+        </div>
+
+        <div class="form-check mb-2">
+            <input class="form-check-input"
+                   type="checkbox"
+                   value="1"
+                   name="crear_reparacion"
+                   id="crear_rep_{{ d['id'] }}">
+            <label class="form-check-label small" for="crear_rep_{{ d['id'] }}">
+                Crear reparación si no existe
+            </label>
+        </div>
+
+        <button class="btn btn-sm btn-outline-primary w-100">
+            Guardar vínculo
+        </button>
+    </form>
+</details>
 
                         </div>
                     </td>
@@ -189,4 +208,50 @@
     </div>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const forms = document.querySelectorAll(".diagnostico-manual-form");
+
+    forms.forEach(form => {
+        const inputPatente = form.querySelector(".patente-buscador");
+        const hiddenVehiculoId = form.querySelector(".vehiculo-id-hidden");
+        const listId = inputPatente.getAttribute("list");
+        const dataList = document.getElementById(listId);
+
+        function actualizarVehiculoId() {
+            const valor = (inputPatente.value || "").trim().toUpperCase();
+            hiddenVehiculoId.value = "";
+
+            if (!dataList) return;
+
+            const opciones = dataList.querySelectorAll("option");
+            for (const op of opciones) {
+                const opValue = (op.value || "").trim().toUpperCase();
+                if (opValue === valor) {
+                    hiddenVehiculoId.value = op.dataset.id || "";
+                    break;
+                }
+            }
+        }
+
+        inputPatente.addEventListener("input", actualizarVehiculoId);
+        inputPatente.addEventListener("change", actualizarVehiculoId);
+
+        form.addEventListener("submit", function (e) {
+            actualizarVehiculoId();
+
+            if (!hiddenVehiculoId.value) {
+                e.preventDefault();
+                alert("Seleccioná una matrícula válida de la lista.");
+                inputPatente.focus();
+            }
+        });
+    });
+});
+</script>
 {% endblock %}

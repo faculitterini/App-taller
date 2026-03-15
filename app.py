@@ -934,9 +934,28 @@ def diagnosticos_listado():
 
     cur.execute(sql, params)
     rows = cur.fetchall()
+
+    # listado de vehículos para vinculación manual
+    cur.execute("""
+        SELECT
+            id,
+            patente,
+            marca,
+            modelo,
+            vin
+        FROM vehiculos
+        ORDER BY patente ASC, marca ASC, modelo ASC
+    """)
+    vehiculos_lookup = cur.fetchall()
+
     con.close()
 
-    return render_template("diagnosticos.html", diagnosticos=rows, q=q)
+    return render_template(
+        "diagnosticos.html",
+        diagnosticos=rows,
+        q=q,
+        vehiculos_lookup=vehiculos_lookup
+    )
 
 
 @app.route("/diagnosticos/<int:diag_id>/descargar")
