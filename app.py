@@ -979,28 +979,37 @@ def reparacion_nueva(vehiculo_id):
         cur.execute("""
             INSERT INTO reparaciones (vehiculo_id, fecha, descripcion, notas, estado, km)
             VALUES (?, ?, ?, ?, ?, ?)
-            """, (vehiculo_id, fecha, descripcion, notas, estado, km))
-        
-        try:
-            km_num = int(km) if km else None
-            veh_km_num = int(vehiculo["km"]) if vehiculo["km"] and str(vehiculo["km"]).isdigit() else None
-
-            if km_num is not None and (veh_km_num is None or km_num > veh_km_num):
-                cur.execute("UPDATE vehiculos SET km=? WHERE id=?", (km, vehiculo_id))
-        except:
-            pass
-        
-        
-        con.commit()
+        """, (vehiculo_id, fecha, descripcion, notas, estado, km))
 
         reparacion_id = cur.lastrowid
+
+        # Actualizar km actual del vehículo si el nuevo km es mayor
+        try:
+            km_limpio = str(km).strip().replace(".", "").replace(",", "").replace(" ", "")
+            km_num = int(km_limpio) if km_limpio else None
+
+            veh_km_raw = vehiculo["km"] or ""
+            veh_km_limpio = str(veh_km_raw).strip().replace(".", "").replace(",", "").replace(" ", "")
+            veh_km_num = int(veh_km_limpio) if veh_km_limpio.isdigit() else None
+
+            if km_num is not None and (veh_km_num is None or km_num >= veh_km_num):
+                cur.execute("UPDATE vehiculos SET km=? WHERE id=?", (str(km_num), vehiculo_id))
+        except Exception:
+            pass
+
+        con.commit()
         con.close()
 
         backup_db_if_changed()
         return redirect(url_for("reparacion_detalle", reparacion_id=reparacion_id))
 
     con.close()
-    return render_template("reparacion_form.html", cliente=cliente, vehiculo=vehiculo, estados=ESTADOS)
+    return render_template(
+        "reparacion_form.html",
+        cliente=cliente,
+        vehiculo=vehiculo,
+        estados=ESTADOS
+    )
 
 
 @app.route("/reparaciones/editar/<int:reparacion_id>", methods=["GET", "POST"])
