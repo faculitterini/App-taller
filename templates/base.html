@@ -517,6 +517,13 @@
                 <span class="sidebar-text">Gastos</span>
             </a>
 
+            <a href="{{ url_for('lista_precios') }}"
+                class="sidebar-link {% if request.endpoint in ['lista_precios','precio_nuevo','precio_editar'] %}active{% endif %}"
+                title="Lista de precios">
+                    <i class="bi bi-tags"></i>
+                    <span class="sidebar-text">Precios</span>
+            </a>
+
             <a href="{{ url_for('facturas_listado') }}"
                class="sidebar-link {% if request.endpoint == 'facturas_listado' %}active{% endif %}"
                title="Facturación / Balance">

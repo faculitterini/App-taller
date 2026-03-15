@@ -64,6 +64,19 @@ def init_db():
     con = get_con()
     cur = con.cursor()
 
+    # LISTA DE PRECIOS
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS lista_precios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        concepto TEXT NOT NULL,
+        categoria TEXT,
+        tipo TEXT DEFAULT 'SERVICIO',
+        precio REAL DEFAULT 0,
+        notas TEXT,
+        activo INTEGER DEFAULT 1
+    )
+    """)
+
     # DIAGNÓSTICOS (AUTEL)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS diagnosticos (
