@@ -1,4 +1,4 @@
-# app.py (ARREGLADO + DIAGNÓSTICOS)
+# app.py
 from flask import Flask, render_template, request, redirect, session, url_for, flash, send_from_directory
 import sqlite3
 import os
@@ -20,6 +20,8 @@ DB_NAME = "database.db"
 BACKUP_FOLDER = "backups"
 
 UPLOAD_FOLDER = os.path.join("static", "uploads")
+UPLOAD_DIAG_FOLDER = os.path.join("static", "uploads", "diagnosticos")
+
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
@@ -64,7 +66,7 @@ def init_db():
     con = get_con()
     cur = con.cursor()
 
-    # LISTA DE PRECIOS
+    # ---------------- LISTA DE PRECIOS ----------------
     cur.execute("""
     CREATE TABLE IF NOT EXISTS lista_precios (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,7 +79,7 @@ def init_db():
     )
     """)
 
-    # DIAGNÓSTICOS (AUTEL)
+    # ---------------- DIAGNÓSTICOS (AUTEL) ----------------
     cur.execute("""
     CREATE TABLE IF NOT EXISTS diagnosticos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,9 +113,15 @@ def init_db():
     cur.execute("SELECT id FROM users WHERE username='admin'")
     row = cur.fetchone()
     if row:
-        cur.execute("UPDATE users SET password=?, rol=? WHERE id=?", ("1234", "admin", row[0]))
+        cur.execute(
+            "UPDATE users SET password=?, rol=? WHERE id=?",
+            ("1234", "admin", row[0])
+        )
     else:
-        cur.execute("INSERT INTO users (username, password, rol) VALUES (?, ?, ?)", ("admin", "1234", "admin"))
+        cur.execute(
+            "INSERT INTO users (username, password, rol) VALUES (?, ?, ?)",
+            ("admin", "1234", "admin")
+        )
 
     # ---------------- CLIENTES ----------------
     cur.execute("""
@@ -127,6 +135,7 @@ def init_db():
         notas TEXT
     )
     """)
+
     cur.execute("PRAGMA table_info(clientes)")
     cols = [c[1] for c in cur.fetchall()]
     if "documento" not in cols:
@@ -148,9 +157,15 @@ def init_db():
         anio TEXT,
         km TEXT,
         notas TEXT,
+        vin TEXT,
         FOREIGN KEY(cliente_id) REFERENCES clientes(id)
     )
     """)
+
+    cur.execute("PRAGMA table_info(vehiculos)")
+    cols = [c[1] for c in cur.fetchall()]
+    if "vin" not in cols:
+        cur.execute("ALTER TABLE vehiculos ADD COLUMN vin TEXT")
 
     # ---------------- REPARACIONES ----------------
     cur.execute("""
@@ -164,6 +179,7 @@ def init_db():
         FOREIGN KEY(vehiculo_id) REFERENCES vehiculos(id)
     )
     """)
+
     cur.execute("PRAGMA table_info(reparaciones)")
     cols = [c[1] for c in cur.fetchall()]
     if "estado" not in cols:
@@ -204,10 +220,12 @@ def init_db():
         FOREIGN KEY(reparacion_id) REFERENCES reparaciones(id)
     )
     """)
+
     cur.execute("PRAGMA table_info(reparacion_items)")
     cols = [c[1] for c in cur.fetchall()]
     if "descuento" not in cols:
         cur.execute("ALTER TABLE reparacion_items ADD COLUMN descuento REAL")
+
     cur.execute("PRAGMA table_info(reparacion_items)")
     cols = [c[1] for c in cur.fetchall()]
     if "tipo" not in cols:
@@ -251,15 +269,18 @@ def init_db():
     cols = [c[1] for c in cur.fetchall()]
     if "descuento_global" not in cols:
         cur.execute("ALTER TABLE facturas ADD COLUMN descuento_global REAL")
+
     cur.execute("PRAGMA table_info(facturas)")
     cols = [c[1] for c in cur.fetchall()]
     if "es_presupuesto" not in cols:
         cur.execute("ALTER TABLE facturas ADD COLUMN es_presupuesto INTEGER DEFAULT 1")
         cur.execute("UPDATE facturas SET es_presupuesto = 1 WHERE es_presupuesto IS NULL")
+
     cur.execute("PRAGMA table_info(facturas)")
     cols = [c[1] for c in cur.fetchall()]
     if "total_servicios" not in cols:
         cur.execute("ALTER TABLE facturas ADD COLUMN total_servicios REAL")
+
     cur.execute("PRAGMA table_info(facturas)")
     cols = [c[1] for c in cur.fetchall()]
     if "total_repuestos" not in cols:
@@ -415,8 +436,7 @@ def diagnostico_descargar(diag_id):
         return redirect(url_for("diagnosticos_listado"))
 
     filename = row[0]
-    folder = os.path.join(app.root_path, "static", "uploads", "diagnosticos")
-    return send_from_directory(folder, filename, as_attachment=True)
+    return send_from_directory(UPLOAD_DIAG_FOLDER, filename, as_attachment=True)
 
 
 # =========================
@@ -461,7 +481,7 @@ def dashboard():
     """, (hoy,))
     citas = cur.fetchall()
 
-    # Gastos pendientes (pagado=0)
+    # Gastos pendientes
     cur.execute("""
         SELECT id, fecha, categoria, descripcion, monto, pagador
         FROM gastos
@@ -478,7 +498,7 @@ def dashboard():
     """)
     total_gastos_pendientes = (cur.fetchone()[0] or 0)
 
-    # Métricas simples
+    # Métricas
     cur.execute("SELECT COUNT(*) FROM reparaciones WHERE estado='Ingresado'")
     reparaciones_en_proceso = cur.fetchone()[0] or 0
 
@@ -488,7 +508,7 @@ def dashboard():
     cur.execute("SELECT COUNT(*) FROM reparaciones WHERE fecha=? AND estado='Ingresado'", (hoy,))
     reparaciones_hoy = cur.fetchone()[0] or 0
 
-    # Ingresos últimos 7 días (solo facturas reales, no presupuestos) -> servicios
+    # Ingresos últimos 7 días (solo facturas reales)
     cur.execute("""
         SELECT COALESCE(SUM(COALESCE(total_servicios,total)),0)
         FROM facturas
@@ -507,10 +527,11 @@ def dashboard():
 
     balance_7 = total_ingresos_7 - total_gastos_7
 
-    # Serie diaria (7 días) para el chart
+    # Serie diaria
     labels = []
     ingresos_por_dia = []
     gastos_por_dia = []
+
     for i in range(7):
         d = (date.today() - timedelta(days=(6 - i))).isoformat()
         labels.append(d)
@@ -529,7 +550,7 @@ def dashboard():
         """, (d,))
         gastos_por_dia.append(float(cur.fetchone()[0] or 0))
 
-    # Pendientes de cobro (lo que se ve en dashboard) - SOLO ULTIMA FACTURA (FIX)
+    # Pendientes de cobro
     cur.execute("""
         SELECT
             r.id, r.fecha,
@@ -805,8 +826,8 @@ def vehiculo_nuevo(cliente_id):
         con = get_con()
         cur = con.cursor()
         cur.execute("""
-        INSERT INTO vehiculos (cliente_id, patente, marca, modelo, anio, km, vin, notas)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO vehiculos (cliente_id, patente, marca, modelo, anio, km, vin, notas)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (cliente_id, patente, marca, modelo, anio, km, vin, notas))
         con.commit()
         con.close()
@@ -839,13 +860,14 @@ def vehiculo_editar(id):
         modelo = request.form.get("modelo", "").strip()
         anio = request.form.get("anio", "").strip()
         km = request.form.get("km", "").strip()
+        vin = request.form.get("vin", "").strip().upper()
         notas = request.form.get("notas", "").strip()
 
         cur.execute("""
             UPDATE vehiculos
-            SET patente=?, marca=?, modelo=?, anio=?, km=?, notas=?
+            SET patente=?, marca=?, modelo=?, anio=?, km=?, vin=?, notas=?
             WHERE id=?
-        """, (patente, marca, modelo, anio, km, notas, id))
+        """, (patente, marca, modelo, anio, km, vin, notas, id))
 
         con.commit()
         con.close()
@@ -902,12 +924,14 @@ def reparaciones_vehiculo(vehiculo_id):
 
     sql = "SELECT * FROM reparaciones WHERE vehiculo_id=?"
     params = [vehiculo_id]
+
     if desde:
         sql += " AND fecha >= ?"
         params.append(desde)
     if hasta:
         sql += " AND fecha <= ?"
         params.append(hasta)
+
     sql += " ORDER BY fecha DESC, id DESC"
 
     cur.execute(sql, params)
@@ -929,6 +953,7 @@ def reparaciones_vehiculo(vehiculo_id):
 def reparacion_nueva(vehiculo_id):
     con = get_con()
     cur = con.cursor()
+
     cur.execute("SELECT * FROM vehiculos WHERE id=?", (vehiculo_id,))
     vehiculo = cur.fetchone()
     if not vehiculo:
@@ -988,6 +1013,7 @@ def reparacion_editar(reparacion_id):
         descripcion = request.form.get("descripcion", "").strip()
         notas = request.form.get("notas", "").strip()
         estado = (request.form.get("estado") or reparacion["estado"] or "Presupuesto").strip()
+
         if estado not in ESTADOS:
             estado = "Presupuesto"
 
@@ -1004,7 +1030,13 @@ def reparacion_editar(reparacion_id):
         return redirect(url_for("reparacion_detalle", reparacion_id=reparacion_id))
 
     con.close()
-    return render_template("reparacion_form.html", cliente=cliente, vehiculo=vehiculo, reparacion=reparacion, estados=ESTADOS)
+    return render_template(
+        "reparacion_form.html",
+        cliente=cliente,
+        vehiculo=vehiculo,
+        reparacion=reparacion,
+        estados=ESTADOS
+    )
 
 
 @app.route("/reparaciones/eliminar/<int:reparacion_id>")
@@ -1106,6 +1138,7 @@ def gasto_rapido():
     con.close()
 
     flash("Gasto guardado.", "success")
+    backup_db_if_changed()
     return redirect(url_for("dashboard"))
 
 
@@ -1113,12 +1146,11 @@ def gasto_rapido():
 @login_required
 def reparacion_cambiar_estado(reparacion_id):
     nuevo_estado = (request.form.get("estado") or "").strip()
-    confirm = (request.form.get("confirm") or "").strip()  # "1" si confirmaron
+    confirm = (request.form.get("confirm") or "").strip()
 
     if not nuevo_estado:
         return redirect(url_for("dashboard"))
 
-    # seguridad: solo estados permitidos
     if nuevo_estado not in ESTADOS:
         flash("Estado inválido.", "warning")
         return redirect(url_for("dashboard"))
@@ -1126,7 +1158,6 @@ def reparacion_cambiar_estado(reparacion_id):
     con = get_con()
     cur = con.cursor()
 
-    # Si quiere pasar a Facturado, primero confirmar factura (si existe y está como presupuesto)
     if nuevo_estado == "Facturado":
         cur.execute("""
             SELECT id, total, es_presupuesto
@@ -1142,19 +1173,17 @@ def reparacion_cambiar_estado(reparacion_id):
             flash("No hay factura/presupuesto generado en esta reparación.", "warning")
             return redirect(url_for("dashboard"))
 
-        factura_id, total, es_presupuesto = fac["id"], fac["total"], fac["es_presupuesto"]
+        factura_id = fac["id"]
+        es_presupuesto = fac["es_presupuesto"]
 
-        # Si todavía es presupuesto, pedir confirmación
         if (es_presupuesto is None) or int(es_presupuesto) == 1:
             if confirm != "1":
                 con.close()
                 flash("Confirmación requerida para facturar.", "warning")
                 return redirect(url_for("dashboard"))
 
-            # Confirmar factura
             cur.execute("UPDATE facturas SET es_presupuesto = 0 WHERE id = ?", (factura_id,))
 
-            # ---- Cargar repuestos como gasto (AUTO al facturar desde dashboard) ----
             cur.execute("""
                 SELECT COALESCE(SUM(cantidad * precio_unitario * (1 - COALESCE(descuento,0)/100.0)), 0)
                 FROM reparacion_items
@@ -1163,7 +1192,6 @@ def reparacion_cambiar_estado(reparacion_id):
             """, (reparacion_id,))
             total_repuestos = float(cur.fetchone()[0] or 0)
 
-            # evitar duplicados
             cur.execute("""
                 DELETE FROM gastos
                 WHERE reparacion_id = ?
@@ -1193,13 +1221,12 @@ def reparacion_cambiar_estado(reparacion_id):
                     VALUES (?, 'Repuestos', ?, ?, '', NULL, NULL, 0, NULL, ?)
                 """, (hoy, descripcion, total_repuestos, reparacion_id))
 
-        # si ya era factura real, no hacemos nada extra
-
     cur.execute("UPDATE reparaciones SET estado=? WHERE id=?", (nuevo_estado, reparacion_id))
     con.commit()
     con.close()
 
     flash("Estado actualizado.", "success")
+    backup_db_if_changed()
     return redirect(url_for("dashboard"))
 
 
@@ -1213,6 +1240,7 @@ def item_nuevo(reparacion_id):
     cur = con.cursor()
     cur.execute("SELECT * FROM reparaciones WHERE id=?", (reparacion_id,))
     reparacion = cur.fetchone()
+
     if not reparacion:
         con.close()
         return redirect(url_for("clientes"))
@@ -1223,6 +1251,7 @@ def item_nuevo(reparacion_id):
         precio_unitario = float(request.form.get("precio_unitario") or 0)
         descuento = float(request.form.get("descuento") or 0)
         tipo = (request.form.get("tipo") or "SERVICIO").strip().upper()
+
         if tipo not in ("SERVICIO", "REPUESTO"):
             tipo = "SERVICIO"
 
@@ -1241,6 +1270,7 @@ def item_nuevo(reparacion_id):
     cur.execute("SELECT id, nombre FROM item_conceptos ORDER BY nombre")
     conceptos = cur.fetchall()
     con.close()
+
     return render_template("item_form.html", reparacion=reparacion, conceptos=conceptos)
 
 
@@ -1251,6 +1281,7 @@ def item_editar(item_id):
     cur = con.cursor()
     cur.execute("SELECT * FROM reparacion_items WHERE id=?", (item_id,))
     item = cur.fetchone()
+
     if not item:
         con.close()
         return redirect(url_for("clientes"))
@@ -1265,6 +1296,7 @@ def item_editar(item_id):
         precio_unitario = float(request.form.get("precio_unitario") or 0)
         descuento = float(request.form.get("descuento") or 0)
         tipo = (request.form.get("tipo") or "SERVICIO").strip().upper()
+
         if tipo not in ("SERVICIO", "REPUESTO"):
             tipo = "SERVICIO"
 
@@ -1284,6 +1316,7 @@ def item_editar(item_id):
     cur.execute("SELECT id, nombre FROM item_conceptos ORDER BY nombre")
     conceptos = cur.fetchall()
     con.close()
+
     return render_template("item_form.html", item=item, reparacion=reparacion, conceptos=conceptos)
 
 
@@ -1294,6 +1327,7 @@ def item_eliminar(item_id):
     cur = con.cursor()
     cur.execute("SELECT reparacion_id FROM reparacion_items WHERE id=?", (item_id,))
     row = cur.fetchone()
+
     if not row:
         con.close()
         return redirect(url_for("clientes"))
@@ -1330,6 +1364,7 @@ def reparacion_imagen_nueva(reparacion_id):
     cur = con.cursor()
     cur.execute("SELECT * FROM reparaciones WHERE id=?", (reparacion_id,))
     reparacion = cur.fetchone()
+
     if not reparacion:
         con.close()
         return redirect(url_for("clientes"))
@@ -1368,17 +1403,19 @@ def reparacion_imagen_eliminar(img_id):
 
     cur.execute("SELECT reparacion_id, filename FROM reparacion_imagenes WHERE id=?", (img_id,))
     row = cur.fetchone()
+
     if not row:
         con.close()
         return redirect(url_for("clientes"))
 
     reparacion_id, filename = row
+
     if filename:
         file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
         if os.path.exists(file_path):
             try:
                 os.remove(file_path)
-            except:
+            except Exception:
                 pass
 
     cur.execute("DELETE FROM reparacion_imagenes WHERE id=?", (img_id,))
@@ -1431,7 +1468,6 @@ def reparacion_factura(reparacion_id):
         else:
             subtotal_servicios += subtotal
 
-    # buscar / crear factura (siempre nace como presupuesto)
     cur.execute("""
         SELECT id, reparacion_id, fecha, total, descuento_global, es_presupuesto, total_servicios, total_repuestos
         FROM facturas
@@ -1444,6 +1480,7 @@ def reparacion_factura(reparacion_id):
     if not row:
         descuento_global = 0.0
         total_final = base_total
+
         cur.execute("""
             INSERT INTO facturas (reparacion_id, fecha, total, descuento_global, es_presupuesto, total_servicios, total_repuestos)
             VALUES (?, ?, ?, ?, 1, ?, ?)
@@ -1468,10 +1505,10 @@ def reparacion_factura(reparacion_id):
         """, (total_final, descuento_global, subtotal_servicios, subtotal_repuestos, factura_id))
         con.commit()
 
-    # WhatsApp
     tel_raw = cliente["telefono"] if "telefono" in cliente.keys() else (cliente[3] or "")
     tel_digits = "".join(ch for ch in (tel_raw or "") if ch.isdigit())
     wa_phone = ""
+
     if tel_digits:
         if tel_digits.startswith("0"):
             tel_digits = tel_digits[1:]
@@ -1481,6 +1518,7 @@ def reparacion_factura(reparacion_id):
             wa_phone = tel_digits
 
     presupuesto_url = url_for("reparacion_factura", reparacion_id=reparacion_id, _external=True)
+
     con.close()
 
     return render_template(
@@ -1529,7 +1567,6 @@ def factura_confirmar(factura_id):
     con = get_con()
     cur = con.cursor()
 
-    # reparación
     cur.execute("SELECT reparacion_id FROM facturas WHERE id=?", (factura_id,))
     row = cur.fetchone()
     if not row:
@@ -1539,7 +1576,6 @@ def factura_confirmar(factura_id):
     reparacion_id = row[0]
     hoy = date.today().isoformat()
 
-    # items
     cur.execute("""
         SELECT cantidad, precio_unitario, COALESCE(descuento,0), COALESCE(tipo,'SERVICIO')
         FROM reparacion_items
@@ -1564,7 +1600,6 @@ def factura_confirmar(factura_id):
 
     total_final = total_servicios + total_repuestos
 
-    # confirmar factura
     cur.execute("""
         UPDATE facturas
         SET es_presupuesto = 0,
@@ -1575,10 +1610,8 @@ def factura_confirmar(factura_id):
         WHERE id=?
     """, (total_servicios, total_repuestos, total_final, hoy, factura_id))
 
-    # estado Facturado
     cur.execute("UPDATE reparaciones SET estado='Facturado' WHERE id=?", (reparacion_id,))
 
-    # crear/actualizar gasto de repuestos (pendiente)
     cur.execute("""
         DELETE FROM gastos
         WHERE reparacion_id = ?
@@ -1644,12 +1677,14 @@ def facturas_listado():
 
     filtros = []
     params = []
+
     if desde:
         filtros.append("DATE(f.fecha) >= DATE(?)")
         params.append(desde)
     if hasta:
         filtros.append("DATE(f.fecha) <= DATE(?)")
         params.append(hasta)
+
     if filtros:
         sql_f += " AND " + " AND ".join(filtros)
 
@@ -1657,20 +1692,22 @@ def facturas_listado():
     cur.execute(sql_f, params)
     facturas = cur.fetchall()
 
-    # gastos
     sql_g = """
         SELECT id, fecha, categoria, descripcion, monto, pagador, medio_pago, notas, pagado, fecha_pago, reparacion_id
         FROM gastos
         WHERE 1=1
     """
+
     filtros_g = []
     params_g = []
+
     if desde:
         filtros_g.append("DATE(fecha) >= DATE(?)")
         params_g.append(desde)
     if hasta:
         filtros_g.append("DATE(fecha) <= DATE(?)")
         params_g.append(hasta)
+
     if filtros_g:
         sql_g += " AND " + " AND ".join(filtros_g)
 
@@ -1678,7 +1715,7 @@ def facturas_listado():
     cur.execute(sql_g, params_g)
     gastos = cur.fetchall()
 
-    total_ingresos = sum((f[3] or 0) for f in facturas)  # servicios
+    total_ingresos = sum((f[3] or 0) for f in facturas)
     total_gastos = sum((g[4] or 0) for g in gastos)
     balance_neto = total_ingresos - total_gastos
 
@@ -1715,12 +1752,14 @@ def gastos_listado():
         WHERE 1=1
     """
     params = []
+
     if desde:
         sql += " AND fecha >= ?"
         params.append(desde)
     if hasta:
         sql += " AND fecha <= ?"
         params.append(hasta)
+
     sql += " ORDER BY fecha DESC, id DESC"
 
     cur.execute(sql, params)
@@ -1743,7 +1782,7 @@ def gasto_nuevo():
 
     try:
         monto = float(monto)
-    except:
+    except Exception:
         monto = 0
 
     pagado = 0
@@ -1818,12 +1857,14 @@ def citas_listado():
 
     sql = "SELECT id, fecha, hora, cliente_nombre, telefono, descripcion FROM citas WHERE 1=1"
     params = []
+
     if desde:
         sql += " AND fecha >= ?"
         params.append(desde)
     if hasta:
         sql += " AND fecha <= ?"
         params.append(hasta)
+
     sql += " ORDER BY fecha ASC, hora ASC"
 
     cur.execute(sql, params)
@@ -1906,14 +1947,130 @@ def cita_eliminar(cita_id):
 
 
 # =========================
-# Arranque (carpetas + init_db para gunicorn también)
+# Lista de precios
+# =========================
+@app.route("/precios")
+@login_required
+def lista_precios():
+    q = request.args.get("q", "").strip()
+    tipo = request.args.get("tipo", "").strip()
+
+    con = get_con()
+    cur = con.cursor()
+
+    sql = """
+        SELECT id, concepto, categoria, tipo, precio, notas, activo
+        FROM lista_precios
+        WHERE 1=1
+    """
+    params = []
+
+    if q:
+        sql += " AND (concepto LIKE ? OR categoria LIKE ?)"
+        patron = f"%{q}%"
+        params.extend([patron, patron])
+
+    if tipo:
+        sql += " AND tipo = ?"
+        params.append(tipo)
+
+    sql += " ORDER BY concepto ASC"
+
+    cur.execute(sql, params)
+    precios = cur.fetchall()
+    con.close()
+
+    return render_template("precios.html", precios=precios, q=q, tipo=tipo)
+
+
+@app.route("/precios/nuevo", methods=["GET", "POST"])
+@login_required
+def precio_nuevo():
+    if request.method == "POST":
+        concepto = request.form["concepto"].strip().upper()
+        categoria = request.form.get("categoria", "").strip()
+        tipo = request.form.get("tipo", "SERVICIO").strip().upper()
+        precio = float(request.form.get("precio") or 0)
+        notas = request.form.get("notas", "").strip()
+        activo = 1 if request.form.get("activo") == "1" else 0
+
+        con = get_con()
+        cur = con.cursor()
+        cur.execute("""
+            INSERT INTO lista_precios (concepto, categoria, tipo, precio, notas, activo)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (concepto, categoria, tipo, precio, notas, activo))
+        con.commit()
+        con.close()
+
+        backup_db_if_changed()
+        return redirect(url_for("lista_precios"))
+
+    return render_template("precio_form.html", precio=None)
+
+
+@app.route("/precios/editar/<int:precio_id>", methods=["GET", "POST"])
+@login_required
+def precio_editar(precio_id):
+    con = get_con()
+    cur = con.cursor()
+
+    cur.execute("""
+        SELECT id, concepto, categoria, tipo, precio, notas, activo
+        FROM lista_precios
+        WHERE id=?
+    """, (precio_id,))
+    precio_item = cur.fetchone()
+
+    if not precio_item:
+        con.close()
+        return redirect(url_for("lista_precios"))
+
+    if request.method == "POST":
+        concepto = request.form["concepto"].strip().upper()
+        categoria = request.form.get("categoria", "").strip()
+        tipo = request.form.get("tipo", "SERVICIO").strip().upper()
+        precio = float(request.form.get("precio") or 0)
+        notas = request.form.get("notas", "").strip()
+        activo = 1 if request.form.get("activo") == "1" else 0
+
+        cur.execute("""
+            UPDATE lista_precios
+            SET concepto=?, categoria=?, tipo=?, precio=?, notas=?, activo=?
+            WHERE id=?
+        """, (concepto, categoria, tipo, precio, notas, activo, precio_id))
+        con.commit()
+        con.close()
+
+        backup_db_if_changed()
+        return redirect(url_for("lista_precios"))
+
+    con.close()
+    return render_template("precio_form.html", precio=precio_item)
+
+
+@app.route("/precios/eliminar/<int:precio_id>")
+@login_required
+def precio_eliminar(precio_id):
+    con = get_con()
+    cur = con.cursor()
+    cur.execute("DELETE FROM lista_precios WHERE id=?", (precio_id,))
+    con.commit()
+    con.close()
+
+    backup_db_if_changed()
+    return redirect(url_for("lista_precios"))
+
+
+# =========================
+# Arranque
 # =========================
 def ensure_folders():
-    os.makedirs(os.path.join("static", "uploads"), exist_ok=True)
-    os.makedirs(os.path.join("static", "uploads", "diagnosticos"), exist_ok=True)
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    os.makedirs(UPLOAD_DIAG_FOLDER, exist_ok=True)
     os.makedirs(BACKUP_FOLDER, exist_ok=True)
 
-# Esto corre cuando gunicorn importa app.py
+
 try:
     ensure_folders()
     init_db()
