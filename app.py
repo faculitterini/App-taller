@@ -176,6 +176,7 @@ def init_db():
         descripcion TEXT,
         notas TEXT,
         estado TEXT,
+        km TEXT,
         FOREIGN KEY(vehiculo_id) REFERENCES vehiculos(id)
     )
     """)
@@ -184,7 +185,8 @@ def init_db():
     cols = [c[1] for c in cur.fetchall()]
     if "estado" not in cols:
         cur.execute("ALTER TABLE reparaciones ADD COLUMN estado TEXT")
-
+    if "km" not in cols:
+        cur.execute("ALTER TABLE reparaciones ADD COLUMN km TEXT")
     # default y limpieza de estados viejos
     cur.execute("UPDATE reparaciones SET estado='Presupuesto' WHERE estado IS NULL OR TRIM(estado)=''")
 
@@ -968,15 +970,27 @@ def reparacion_nueva(vehiculo_id):
         fecha = request.form.get("fecha", "")
         descripcion = request.form.get("descripcion", "").strip()
         notas = request.form.get("notas", "").strip()
+        km = request.form.get("km", "").strip()
 
         estado = (request.form.get("estado") or "Presupuesto").strip()
         if estado not in ESTADOS:
             estado = "Presupuesto"
 
         cur.execute("""
-            INSERT INTO reparaciones (vehiculo_id, fecha, descripcion, notas, estado)
-            VALUES (?, ?, ?, ?, ?)
-        """, (vehiculo_id, fecha, descripcion, notas, estado))
+            INSERT INTO reparaciones (vehiculo_id, fecha, descripcion, notas, estado, km)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, (vehiculo_id, fecha, descripcion, notas, estado, km))
+        
+        try:
+            km_num = int(km) if km else None
+            veh_km_num = int(vehiculo["km"]) if vehiculo["km"] and str(vehiculo["km"]).isdigit() else None
+
+            if km_num is not None and (veh_km_num is None or km_num > veh_km_num):
+                cur.execute("UPDATE vehiculos SET km=? WHERE id=?", (km, vehiculo_id))
+        except:
+            pass
+        
+        
         con.commit()
 
         reparacion_id = cur.lastrowid
@@ -1012,6 +1026,7 @@ def reparacion_editar(reparacion_id):
         fecha = request.form.get("fecha", "")
         descripcion = request.form.get("descripcion", "").strip()
         notas = request.form.get("notas", "").strip()
+        km = request.form.get("km", "").strip()
         estado = (request.form.get("estado") or reparacion["estado"] or "Presupuesto").strip()
 
         if estado not in ESTADOS:
@@ -1019,9 +1034,18 @@ def reparacion_editar(reparacion_id):
 
         cur.execute("""
             UPDATE reparaciones
-            SET fecha=?, descripcion=?, notas=?, estado=?
+            SET fecha=?, descripcion=?, notas=?, estado=?, km=?
             WHERE id=?
-        """, (fecha, descripcion, notas, estado, reparacion_id))
+        """, (fecha, descripcion, notas, estado, km, reparacion_id))
+
+        try:
+            km_num = int(km) if km else None
+            veh_km_num = int(vehiculo["km"]) if vehiculo["km"] and str(vehiculo["km"]).isdigit() else None
+
+            if km_num is not None and (veh_km_num is None or km_num > veh_km_num):
+                cur.execute("UPDATE vehiculos SET km=? WHERE id=?", (km, vehiculo_id))
+        except:
+            pass
 
         con.commit()
         con.close()
@@ -1375,12 +1399,17 @@ def reparacion_imagen_nueva(reparacion_id):
 
         for file in files:
             if file and allowed_file(file.filename):
-                filename = secure_filename(file.filename)
-                unique_name = f"rep_{reparacion_id}_{int(time.time())}_{filename}"
-                save_path = os.path.join(app.config["UPLOAD_FOLDER"], unique_name)
-                file.save(save_path)
+                filename = secure_filename(file.filename or "")
+            if not filename:
+                continue
 
-                cur.execute("""
+            ext = filename.rsplit(".", 1)[1].lower() if "." in filename else ""
+            unique_name = f"rep_{reparacion_id}_{int(time.time()*1000)}.{ext}"
+            save_path = os.path.join(app.config["UPLOAD_FOLDER"], unique_name)
+
+            file.save(save_path)
+
+            cur.execute("""
                     INSERT INTO reparacion_imagenes (reparacion_id, filename, descripcion)
                     VALUES (?, ?, ?)
                 """, (reparacion_id, unique_name, descripcion))

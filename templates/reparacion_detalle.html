@@ -7,6 +7,7 @@
     <strong>Cliente:</strong> {{ cliente[1] }} {{ cliente[2] }} <br>
     <strong>Vehículo:</strong> {{ vehiculo[2] }} - {{ vehiculo[3] }} {{ vehiculo[4] }} <br>
     <strong>Fecha:</strong> {{ reparacion[2] }} <br>
+    <strong>Kilómetros en esta reparación:</strong> {{ reparacion[6] or '-' }} <br>
 </p>
 
 <p>
@@ -31,9 +32,9 @@
 
 <hr class="my-4">
 
-<div class="d-flex justify-content-between align-items-center mb-2">
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-3">
     <h5 class="mb-0">Imágenes de la reparación</h5>
-    <a href="{{ url_for('reparacion_imagen_nueva', reparacion_id=reparacion[0]) }}" class="btn btn-sm btn-outline-primary">
+    <a href="{{ url_for('reparacion_imagen_nueva', reparacion_id=reparacion[0]) }}" class="btn btn-primary">
         + Agregar imagen
     </a>
 </div>
