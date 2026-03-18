@@ -1769,6 +1769,25 @@ def reparacion_detalle(reparacion_id):
         diagnosticos=diagnosticos
     )
 
+@app.route("/diagnosticos/<int:diag_id>/ver")
+@login_required
+def diagnostico_ver(diag_id):
+    con = get_con()
+    cur = con.cursor()
+    cur.execute("SELECT filename FROM diagnosticos WHERE id=?", (diag_id,))
+    row = cur.fetchone()
+    con.close()
+
+    if not row:
+        return redirect(url_for("diagnosticos_listado"))
+
+    filename = row[0]
+
+    return send_from_directory(
+        UPLOAD_DIAG_FOLDER,
+        filename,
+        as_attachment=False  # 🔥 clave: lo abre en el navegador
+    )
 
 @app.route("/dashboard/gasto_rapido", methods=["POST"])
 @login_required

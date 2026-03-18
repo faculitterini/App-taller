@@ -29,16 +29,16 @@
 
 <div class="card-dark-soft p-3">
     <div class="table-responsive">
-        <table class="table table-sm table-dark-custom align-middle mb-0">
+        <table class="table table-sm table-dark-custom align-middle mb-0 diagnosticos-table">
             <thead>
                 <tr>
                     <th>ID</th>
                     <th>Fecha</th>
-                    <th>VIN</th>
-                    <th>Vehículo informado</th>
+                    <th>VIN / Patente</th>
+                    <th>Vehículo</th>
                     <th>Odómetro</th>
-                    <th>Vinculación</th>
-                    <th>Archivo</th>
+                    <th>Estado</th>
+                    <th>PDF</th>
                     <th class="text-end">Acciones</th>
                 </tr>
             </thead>
@@ -46,21 +46,26 @@
             {% if diagnosticos %}
                 {% for d in diagnosticos %}
                 <tr>
-                    <td>#{{ d["id"] }}</td>
-
                     <td>
-                        {{ d["fecha_mail"] or d["created_at"] or "-" }}
+                        <strong>#{{ d["id"] }}</strong>
                     </td>
 
                     <td>
-                        <div class="small">{{ d["vin"] or "-" }}</div>
+                        <div>{{ d["fecha_mail"] or d["created_at"] or "-" }}</div>
+                    </td>
+
+                    <td>
+                        <div class="fw-semibold small">{{ d["vin"] or "-" }}</div>
                         {% if d["patente"] %}
                             <div class="text-muted small">Patente: {{ d["patente"] }}</div>
                         {% endif %}
                     </td>
 
                     <td>
-                        <div>{{ d["marca"] or "-" }} {{ d["modelo"] or "" }}</div>
+                        <div class="fw-semibold">
+                            {{ d["marca"] or "-" }} {{ d["modelo"] or "" }}
+                        </div>
+
                         {% if d["veh_marca"] or d["veh_modelo"] %}
                             <div class="text-muted small">
                                 Base: {{ d["veh_marca"] or "-" }} {{ d["veh_modelo"] or "" }}
@@ -70,19 +75,22 @@
 
                     <td>
                         {% if d["odometro"] %}
-                            {{ d["odometro"] }} km
+                            <span class="badge bg-info text-dark">{{ d["odometro"] }} km</span>
                         {% else %}
-                            -
+                            <span class="text-muted">-</span>
                         {% endif %}
                     </td>
 
                     <td>
                         {% set estado = d["estado_vinculacion"] or "PENDIENTE" %}
+
                         {% if estado == "VINCULADO" %}
                             <span class="badge bg-success">Vinculado</span>
+
                             {% if d["reparacion_id"] %}
-                                <div class="small mt-1">
-                                    <a href="{{ url_for('reparacion_detalle', reparacion_id=d['reparacion_id']) }}">
+                                <div class="small mt-2">
+                                    <a href="{{ url_for('reparacion_detalle', reparacion_id=d['reparacion_id']) }}"
+                                       class="link-light text-decoration-none fw-semibold">
                                         Reparación #{{ d["reparacion_id"] }}
                                     </a>
                                 </div>
@@ -90,35 +98,46 @@
                                     <div class="text-muted small">{{ d["reparacion_estado"] }}</div>
                                 {% endif %}
                             {% endif %}
+
                         {% elif estado == "VEHICULO_ENCONTRADO" %}
                             <span class="badge bg-warning text-dark">Vehículo encontrado</span>
-                            {% if d["vehiculo_id"] %}
-                                <div class="text-muted small mt-1">
-                                    Sin reparación vinculada
-                                </div>
-                            {% endif %}
+                            <div class="text-muted small mt-2">
+                                Sin reparación vinculada
+                            </div>
+
                         {% else %}
                             <span class="badge bg-secondary">Pendiente</span>
+                            <div class="text-muted small mt-2">
+                                Revisar vínculo manual
+                            </div>
                         {% endif %}
                     </td>
 
                     <td>
                         {% if d["filename"] %}
-                            <a href="{{ url_for('diagnostico_descargar', diag_id=d['id']) }}"
-                               class="btn btn-sm btn-outline-light">
-                                Descargar
-                            </a>
+                            <div class="d-flex flex-column gap-1">
+                                <a href="{{ url_for('diagnostico_ver', diag_id=d['id']) }}"
+                                   target="_blank"
+                                   class="btn btn-sm btn-primary">
+                                    Ver PDF
+                                </a>
+
+                                <a href="{{ url_for('diagnostico_descargar', diag_id=d['id']) }}"
+                                   class="btn btn-sm btn-outline-light">
+                                    Descargar
+                                </a>
+                            </div>
                         {% else %}
-                            -
+                            <span class="text-muted">-</span>
                         {% endif %}
                     </td>
 
                     <td class="text-end">
-                        <div class="d-flex flex-column gap-1 align-items-end">
+                        <div class="d-flex flex-column gap-2 align-items-end">
 
                             <form method="post"
                                   action="{{ url_for('diagnostico_autovincular', diag_id=d['id']) }}"
-                                  class="w-100">
+                                  class="w-100 diagnostico-action-form">
                                 <button class="btn btn-sm btn-primary w-100">
                                     Autovincular
                                 </button>
@@ -126,71 +145,79 @@
 
                             <form method="post"
                                   action="{{ url_for('diagnostico_crear_reparacion', diag_id=d['id']) }}"
-                                  class="w-100">
+                                  class="w-100 diagnostico-action-form">
                                 <button class="btn btn-sm btn-success w-100">
                                     Crear reparación
                                 </button>
                             </form>
 
-                            <details class="w-100 mt-1">
-    <summary class="btn btn-sm btn-warning w-100 text-dark">
-      Vincular manual
-    </summary>
+                            <details class="w-100 diagnostico-manual-box">
+                                <summary class="btn btn-sm btn-warning w-100 text-dark fw-bold">
+                                    Vincular manual
+                                </summary>
 
-    <form method="post"
-          action="{{ url_for('diagnostico_vincular_manual', diag_id=d['id']) }}"
-          class="mt-2 p-2 border rounded diagnostico-manual-form">
-        
-        <div class="mb-2">
-            <label class="form-label small">Matrícula / patente</label>
+                                <form method="post"
+                                      action="{{ url_for('diagnostico_vincular_manual', diag_id=d['id']) }}"
+                                      class="mt-2 p-3 border rounded diagnostico-manual-form bg-light-subtle-custom">
 
-            <input type="text"
-                   class="form-control form-control-sm patente-buscador"
-                   list="vehiculos-lista-{{ d['id'] }}"
-                   placeholder="Escribí la patente..."
-                   autocomplete="off">
+                                    <div class="mb-3 text-start">
+                                        <label class="form-label small fw-semibold text-dark">
+                                            Matrícula / patente
+                                        </label>
 
-            <datalist id="vehiculos-lista-{{ d['id'] }}">
-                {% for v in vehiculos_lookup %}
-                    <option
-                        value="{{ v['patente'] or '' }}"
-                        data-id="{{ v['id'] }}"
-                        label="{{ (v['patente'] or '-') ~ ' - ' ~ (v['marca'] or '') ~ ' ' ~ (v['modelo'] or '') ~ (' | VIN: ' ~ v['vin'] if v['vin'] else '') }}">
-                    </option>
-                {% endfor %}
-            </datalist>
+                                        <input type="text"
+                                               class="form-control form-control-sm patente-buscador"
+                                               list="vehiculos-lista-{{ d['id'] }}"
+                                               placeholder="Escribí la patente..."
+                                               autocomplete="off">
 
-            <input type="hidden" name="vehiculo_id" class="vehiculo-id-hidden">
+                                        <datalist id="vehiculos-lista-{{ d['id'] }}">
+                                            {% for v in vehiculos_lookup %}
+                                                <option
+                                                    value="{{ v['patente'] or '' }}"
+                                                    data-id="{{ v['id'] }}"
+                                                    label="{{ (v['patente'] or '-') ~ ' - ' ~ (v['marca'] or '') ~ ' ' ~ (v['modelo'] or '') ~ (' | VIN: ' ~ v['vin'] if v['vin'] else '') }}">
+                                                </option>
+                                            {% endfor %}
+                                        </datalist>
 
-            <div class="form-text small">
-                Elegí una patente cargada en el sistema.
-            </div>
-        </div>
+                                        <input type="hidden" name="vehiculo_id" class="vehiculo-id-hidden">
 
-        <div class="mb-2">
-            <label class="form-label small">ID reparación</label>
-            <input type="number"
-                   name="reparacion_id"
-                   class="form-control form-control-sm"
-                   placeholder="Opcional">
-        </div>
+                                        <div class="form-text small text-dark-emphasis">
+                                            Elegí una patente cargada en el sistema.
+                                        </div>
+                                    </div>
 
-        <div class="form-check mb-2">
-            <input class="form-check-input"
-                   type="checkbox"
-                   value="1"
-                   name="crear_reparacion"
-                   id="crear_rep_{{ d['id'] }}">
-            <label class="form-check-label small" for="crear_rep_{{ d['id'] }}">
-                Crear reparación si no existe
-            </label>
-        </div>
+                                    <div class="mb-3 text-start">
+                                        <label class="form-label small fw-semibold text-dark">
+                                            ID reparación
+                                        </label>
+                                        <input type="number"
+                                               name="reparacion_id"
+                                               class="form-control form-control-sm"
+                                               placeholder="Opcional">
+                                        <div class="form-text small text-dark-emphasis">
+                                            Si lo dejás vacío, se intentará usar una reparación abierta o crear una nueva si marcás la opción.
+                                        </div>
+                                    </div>
 
-        <button class="btn btn-sm btn-outline-primary w-100">
-            Guardar vínculo
-        </button>
-    </form>
-</details>
+                                    <div class="form-check mb-3 text-start">
+                                        <input class="form-check-input"
+                                               type="checkbox"
+                                               value="1"
+                                               name="crear_reparacion"
+                                               id="crear_rep_{{ d['id'] }}">
+                                        <label class="form-check-label small text-dark fw-semibold"
+                                               for="crear_rep_{{ d['id'] }}">
+                                            Crear reparación si no existe
+                                        </label>
+                                    </div>
+
+                                    <button class="btn btn-sm btn-outline-primary w-100 fw-semibold">
+                                        Guardar vínculo
+                                    </button>
+                                </form>
+                            </details>
 
                         </div>
                     </td>
@@ -198,7 +225,7 @@
                 {% endfor %}
             {% else %}
                 <tr>
-                    <td colspan="8" class="text-center text-muted py-3">
+                    <td colspan="8" class="text-center text-muted py-4">
                         No hay diagnósticos cargados.
                     </td>
                 </tr>
@@ -207,6 +234,44 @@
         </table>
     </div>
 </div>
+
+<style>
+    .diagnosticos-table td,
+    .diagnosticos-table th {
+        vertical-align: middle;
+    }
+
+    .diagnostico-manual-box summary {
+        list-style: none;
+    }
+
+    .diagnostico-manual-box summary::-webkit-details-marker {
+        display: none;
+    }
+
+    .bg-light-subtle-custom {
+        background: #f8f9fa;
+    }
+
+    .diagnostico-manual-form {
+        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    }
+
+    .diagnostico-manual-form .form-control,
+    .diagnostico-manual-form .form-check-input {
+        border-color: #ced4da;
+    }
+
+    .diagnostico-action-form {
+        margin: 0;
+    }
+
+    @media (max-width: 768px) {
+        .diagnosticos-table {
+            min-width: 1100px;
+        }
+    }
+</style>
 
 {% endblock %}
 
